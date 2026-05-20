@@ -326,9 +326,10 @@ export default function BinauralBeatsApp() {
       </div>
 
       <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-xl bg-zinc-950/60 backdrop-blur-3xl border border-white/10 rounded-[40px] p-5 z-10 flex flex-col gap-4 relative shadow-[0_30px_100px_rgba(0,0,0,0.8)]"
+        initial={{ opacity: 0, scale: 1.45, y: 20 }}
+        animate={{ opacity: 1, scale: 1.5, y: 0 }}
+        transition={{ duration: 0.8, ease: "easeOut" }}
+        className="w-full max-w-xl bg-zinc-950/60 backdrop-blur-3xl border border-white/10 rounded-[40px] p-5 z-10 flex flex-col gap-4 relative shadow-[0_30px_100px_rgba(0,0,0,0.8)] origin-center"
       >
         {/* Internal Glow Decor */}
         <div className="absolute inset-0 rounded-[40px] pointer-events-none" style={{ boxShadow: `inset 0 0 40px hsla(${baseHue}, 60%, 50%, 0.05)` }} />
@@ -336,7 +337,7 @@ export default function BinauralBeatsApp() {
         {/* Header Telemetry */}
         <div className="flex justify-between items-end px-2">
           <div className="space-y-0.5">
-            <h2 className="text-[10px] font-bold uppercase tracking-[0.3em] text-white/30">Neuro-Sync Engine</h2>
+            <h2 className="text-[10px] font-bold uppercase tracking-[0.3em] text-white/30">Neuro-Sync Engine <span className="text-[8px] opacity-50 ml-1">v1.0.0</span></h2>
             <div className="flex items-center gap-2">
               <div className={cn("w-1.5 h-1.5 rounded-full", isPlaying ? "animate-pulse" : "opacity-30")} style={{ backgroundColor: `hsl(${baseHue}, 80%, 60%)` }} />
               <span className="text-xs font-medium text-white/60 tracking-widest uppercase">STOCHASTIC DSP V2</span>
