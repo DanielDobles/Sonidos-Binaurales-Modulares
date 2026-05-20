@@ -463,9 +463,13 @@ export default function BinauralBeatsApp() {
       if (isochronicModuleRef.current) {
         isochronicModuleRef.current.stop();
       }
-      if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
-        audioCtxRef.current.close().catch(console.error);
-        audioCtxRef.current = null;
+      
+      const ctx = audioCtxRef.current;
+      if (ctx && ctx.state !== 'closed') {
+        audioCtxRef.current = null; // Clear ref immediately to prevent race conditions
+        ctx.close().catch(() => {
+          // Silent catch: context might already be in 'closing' or 'closed' state
+        });
       }
     };
   }, [initAudio]);
