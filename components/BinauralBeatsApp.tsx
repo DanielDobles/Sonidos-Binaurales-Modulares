@@ -262,7 +262,8 @@ export default function BinauralBeatsApp() {
     setActivePreset(preset.id);
     const now = audioCtxRef.current?.currentTime || 0;
     if (isPlaying && audioCtxRef.current) {
-      oscRightRef.current?.frequency.setTargetAtTime(carrierFreq + preset.beatFreq, now, 0.5);
+      // Increased time constant (1.2) for a "blurrier" sliding transition
+      oscRightRef.current?.frequency.setTargetAtTime(carrierFreq + preset.beatFreq, now, 1.2);
       isochronicModuleRef.current?.setPulseFreq(preset.beatFreq, now);
     }
     if (isAutoMode) setAutoBeatFreq(preset.beatFreq);
@@ -347,8 +348,19 @@ export default function BinauralBeatsApp() {
 
   const toggleSound = useCallback(async () => {
     if (isPlaying) {
-      [oscLeftRef, oscRightRef, lfoOscRef].forEach(ref => { ref.current?.stop(); ref.current = null; });
-      isochronicModuleRef.current?.stop();
+      const ctx = audioCtxRef.current;
+      if (ctx && masterGainRef.current) {
+        const now = ctx.currentTime;
+        const fadeOutTime = 0.5; // 500ms Fade-out "Blur"
+        masterGainRef.current.gain.cancelScheduledValues(now);
+        masterGainRef.current.gain.setTargetAtTime(0, now, fadeOutTime / 4);
+        
+        // Final stop after fade
+        setTimeout(() => {
+          [oscLeftRef, oscRightRef, lfoOscRef].forEach(ref => { ref.current?.stop(); ref.current = null; });
+          isochronicModuleRef.current?.stop();
+        }, fadeOutTime * 1000);
+      }
       setIsPlaying(false);
       setHasStarted(false);
     } else {
@@ -408,8 +420,9 @@ export default function BinauralBeatsApp() {
     const freq = SOLFEGGIO.find(s => s.id === id)?.freq || 528;
     if (isPlaying && audioCtxRef.current) {
       const now = audioCtxRef.current.currentTime;
-      oscLeftRef.current?.frequency.setTargetAtTime(freq, now, 0.5);
-      oscRightRef.current?.frequency.setTargetAtTime(freq + pulseFreq, now, 0.5);
+      // Increased time constant (1.2) for a "blurrier" sliding transition
+      oscLeftRef.current?.frequency.setTargetAtTime(freq, now, 1.2);
+      oscRightRef.current?.frequency.setTargetAtTime(freq + pulseFreq, now, 1.2);
       isochronicModuleRef.current?.setCarrierFreq(freq, now);
     }
   };

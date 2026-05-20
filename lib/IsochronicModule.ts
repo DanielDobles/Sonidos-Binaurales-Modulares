@@ -43,8 +43,8 @@ export class IsochronicModule {
   private _intensity: number = 0.5;
   private _drive: number = 0.5;
   private _pitchOffset: number = 0.0;
-  private _attackTime: number = 0.05; // 50ms Attack
-  private _releaseTime: number = 0.15; // 150ms Release
+  private _attackTime: number = 0.15; // 150ms Attack (Softer entry)
+  private _releaseTime: number = 0.40; // 400ms Release (Linger/Blur)
 
   // Mix Balance (0.0 = pure synthetic, 1.0 = pure sample)
   private _mixBalance: number = 0.4;
