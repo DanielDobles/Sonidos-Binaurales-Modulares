@@ -394,6 +394,27 @@ export default function BinauralBeatsApp() {
                 </button>
               </motion.div>
             </BorderGlow>
+
+            {/* Credits: Subtle & Curated (Outside the box) */}
+            <motion.div 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 1.2, duration: 1 }}
+              className="mt-14 flex flex-col items-center gap-4 pointer-events-none"
+            >
+              <div className="flex items-center gap-5">
+                <span className="text-[11px] font-mono font-light tracking-[0.4em] uppercase text-white/20">
+                  Developed by
+                </span>
+                <span className="text-[11px] font-mono font-medium tracking-[0.4em] uppercase text-white/60">
+                  Daniel Dobles
+                </span>
+              </div>
+              <div className="w-20 h-px bg-white/10" />
+              <span className="text-[10px] font-mono font-light tracking-[0.5em] uppercase text-white/15">
+                Sound Engineering
+              </span>
+            </motion.div>
           </motion.div>
         ) : (          <div key="controls-container" className="fixed inset-0 flex items-center justify-center z-10 p-4 pointer-events-none">
             <motion.div
@@ -535,55 +556,9 @@ export default function BinauralBeatsApp() {
                   </div>
                 </div>
               </div>
-              {/* Footer - Unified LED Unit */}
-              <div className="pt-4 border-t border-white/5 flex flex-col items-center">
-                <motion.div 
-                  initial={false}
-                  animate={{ 
-                    opacity: 1,
-                  }}
-                  className="flex flex-col items-center group/footer animate-pulse duration-[3000ms]"
-                >
-                  {/* Unified Text Group */}
-                  <div className="flex items-center gap-2">
-                    <span 
-                      className="text-[8px] font-mono font-light tracking-[0.5em] uppercase bg-clip-text text-transparent bg-fixed"
-                      style={{ 
-                        backgroundImage: `radial-gradient(ellipse 160% 100% at center, hsla(${baseHue}, 100%, 80%, 0.8) 0%, hsla(${baseHue}, 80%, 40%, 0.4) 60%, transparent 100%)`
-                      }}
-                    >
-                      Developed by
-                    </span>
-                    <span 
-                      className="text-[8px] font-mono font-light tracking-[0.5em] uppercase bg-clip-text text-transparent bg-fixed"
-                      style={{ 
-                        backgroundImage: `radial-gradient(ellipse 160% 100% at center, white 0%, hsla(${baseHue}, 100%, 80%, 1) 30%, hsla(${baseHue}, 80%, 50%, 0.6) 70%, transparent 100%)`,
-                        textShadow: `0 0 15px hsla(${baseHue}, 90%, 60%, 0.2)`
-                      }}
-                    >
-                      Daniel Dobles
-                    </span>
-                  </div>
-
-                  {/* Central Light Slit (Separator) */}
-                  <div 
-                    className="w-48 h-px bg-fixed my-2 transition-all duration-1000"
-                    style={{ 
-                      backgroundImage: `radial-gradient(ellipse 100% 100% at center, white 0%, hsla(${baseHue}, 100%, 70%, 0.8) 40%, hsla(${baseHue}, 80%, 40%, 0.4) 80%, transparent 100%)`,
-                      boxShadow: `0 0 15px hsla(${baseHue}, 100%, 60%, 0.1)`
-                    }}
-                  />
-
-                  {/* Bottom Text Slit */}
-                  <span 
-                    className="text-[8px] font-mono font-light tracking-[0.5em] uppercase bg-clip-text text-transparent bg-fixed"
-                    style={{ 
-                      backgroundImage: `radial-gradient(ellipse 160% 100% at center, hsla(${baseHue}, 100%, 80%, 0.8) 0%, hsla(${baseHue}, 80%, 50%, 0.4) 70%, transparent 100%)`
-                    }}
-                  >
-                    Sound Engineering
-                  </span>
-                </motion.div>
+              {/* Future Function Space (Reserved) */}
+              <div className="pt-4 border-t border-white/5 flex flex-col items-center min-h-[60px]">
+                {/* Reserved for future functionality */}
               </div>
             </motion.div>
           </div>
