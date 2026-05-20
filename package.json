@@ -12,6 +12,7 @@
   "dependencies": {
     "@google/genai": "^1.17.0",
     "@hookform/resolvers": "^5.2.1",
+    "@phosphor-icons/react": "^2.1.10",
     "@react-three/fiber": "^9.6.1",
     "@types/three": "^0.184.1",
     "autoprefixer": "^10.4.21",
@@ -21,9 +22,12 @@
     "lucide-react": "^0.553.0",
     "motion": "^12.23.24",
     "next": "^15.4.9",
+    "ogl": "^1.0.11",
     "postcss": "^8.5.6",
+    "radix-ui": "^1.4.3",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
+    "shadcn": "^4.7.0",
     "tailwind-merge": "^3.6.0",
     "three": "^0.184.0"
   },

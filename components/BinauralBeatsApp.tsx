@@ -1,35 +1,74 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Play, Pause, Sparkles, Moon, Brain, Zap, Compass } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { Play, Pause, Sparkles, Moon, Brain, Zap, Compass, Music, Volume2 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { Canvas, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
-// Fallback Grainient component matching the required aesthetic
-const Grainient = ({ children, className }: { children?: React.ReactNode, className?: string }) => (
-  <div className={cn("relative w-full h-full overflow-hidden bg-zinc-950", className)}>
-    <div className="absolute inset-0 z-0 opacity-30 mix-blend-screen pointer-events-none" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=\'0 0 200 200\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'noiseFilter\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.85\' numOctaves=\'3\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23noiseFilter)\'/%3E%3C/svg%3E")' }} />
-    {children}
-  </div>
-);
-
+/**
+ * UTILS
+ */
 function cn(...inputs: ClassValue[]) { return twMerge(clsx(inputs)); }
 
+/**
+ * CONSTANTS & TYPES
+ */
 interface WavePreset { 
   id: string; 
   name: string; 
   range: string; 
   beatFreq: number; 
-  carrierFreq: number; 
   minFreq: number; 
   maxFreq: number; 
   icon: React.ReactNode; 
 }
 
-// --- TRUE 3D OSCILLOSCOPE SHADER ENGINE ---
+interface SolfeggioPreset {
+  id: string;
+  name: string;
+  freq: number;
+  description: string;
+}
+
+const PRESETS: WavePreset[] = [
+  { id: 'delta', name: 'Delta', range: '0.5-4Hz', beatFreq: 2.5, minFreq: 0.5, maxFreq: 4.0, icon: <Moon className="w-4 h-4" /> },
+  { id: 'theta', name: 'Theta', range: '4-8Hz', beatFreq: 6.0, minFreq: 4.0, maxFreq: 8.0, icon: <Sparkles className="w-4 h-4" /> },
+  { id: 'alpha', name: 'Alpha', range: '8-13Hz', beatFreq: 10.0, minFreq: 8.0, maxFreq: 13.0, icon: <Compass className="w-4 h-4" /> },
+  { id: 'beta', name: 'Beta', range: '13-30Hz', beatFreq: 18.0, minFreq: 13.0, maxFreq: 30.0, icon: <Zap className="w-4 h-4" /> },
+  { id: 'gamma', name: 'Gamma', range: '30-50Hz', beatFreq: 38.0, minFreq: 30.0, maxFreq: 50.0, icon: <Brain className="w-4 h-4" /> },
+];
+
+const SOLFEGGIO: SolfeggioPreset[] = [
+  { id: 'ut', name: '396 Hz', freq: 396, description: 'Liberar Culpa y Miedo' },
+  { id: 're', name: '417 Hz', freq: 417, description: 'Facilitar el Cambio' },
+  { id: 'mi', name: '528 Hz', freq: 528, description: 'Transformación y Milagros' },
+  { id: 'fa', name: '639 Hz', freq: 639, description: 'Conexión y Relaciones' },
+  { id: 'sol', name: '741 Hz', freq: 741, description: 'Despertar Intuición' },
+  { id: 'la', name: '852 Hz', freq: 852, description: 'Orden Espiritual' },
+];
+
+/**
+ * OPTIMIZED GRAINIENT COMPONENT (SVG FILTER)
+ * Prevents GPU degradation and visual artifacts with calibrated turbulence.
+ */
+const Grainient = ({ children, className }: { children?: React.ReactNode, className?: string }) => (
+  <div className={cn("relative w-full h-full overflow-hidden bg-zinc-950", className)}>
+    <div 
+      className="absolute inset-0 z-0 opacity-[0.15] mix-blend-overlay pointer-events-none" 
+      style={{ 
+        backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 250 250' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")` 
+      }} 
+    />
+    {children}
+  </div>
+);
+
+/**
+ * AURORA WAVEFORM - THREE.JS VISUALIZER
+ */
 function AuroraWaveform({ 
   isPlaying, 
   analyserRef, 
@@ -37,7 +76,8 @@ function AuroraWaveform({
   activePresetData,
   pulseTextRef, 
   oscRightRef,
-  audioCtxRef
+  audioCtxRef,
+  carrierFreq
 }: { 
   isPlaying: boolean;
   analyserRef: React.RefObject<AnalyserNode | null>;
@@ -46,16 +86,17 @@ function AuroraWaveform({
   pulseTextRef: React.RefObject<HTMLSpanElement | null>;
   oscRightRef: React.RefObject<OscillatorNode | null>;
   audioCtxRef: React.RefObject<AudioContext | null>;
+  carrierFreq: number;
 }) {
   const meshRef = useRef<THREE.Mesh>(null!);
   const materialRef = useRef<THREE.ShaderMaterial>(null!);
-  const byteDataArray = useMemo(() => new Uint8Array(256), []);
-  const floatDataArray = useMemo(() => new Float32Array(256), []);
+  const byteDataArray = useMemo(() => new Uint8Array(128), []);
+  const floatDataArray = useMemo(() => new Float32Array(128), []);
   
   const visualPulse = useRef<number>(activePresetData.beatFreq);
   
   const audioTexture = useMemo(() => {
-    const tex = new THREE.DataTexture(floatDataArray, 256, 1, THREE.RedFormat, THREE.FloatType);
+    const tex = new THREE.DataTexture(floatDataArray, 128, 1, THREE.RedFormat, THREE.FloatType);
     tex.needsUpdate = true;
     return tex;
   }, [floatDataArray]);
@@ -65,48 +106,43 @@ function AuroraWaveform({
     uColor: { value: new THREE.Color() },
     uAudioBuffer: { value: audioTexture },
     uIsPlaying: { value: 0.0 },
-    uMaxAmplitude: { value: 1.2 }
+    uMaxAmplitude: { value: 1.5 }
   }), [audioTexture]);
 
   useFrame((state) => {
     const { clock } = state;
     const t = clock.getElapsedTime();
     
-    const noiseValue = Math.sin(t * 0.23) * Math.cos(t * 0.091);
+    // Modulation of the binaural pulse within the preset range
+    const noiseValue = Math.sin(t * 0.15) * Math.cos(t * 0.07);
     const range = activePresetData.maxFreq - activePresetData.minFreq;
     const currentInstantPulse = activePresetData.minFreq + ((noiseValue + 1.0) / 2.0) * range;
 
     if (materialRef.current) {
       materialRef.current.uniforms.uTime.value = t;
-      materialRef.current.uniforms.uColor.value.setHSL(baseHue / 360, 0.8, 0.5);
-      materialRef.current.uniforms.uIsPlaying.value = isPlaying ? 1.0 : 0.0;
+      materialRef.current.uniforms.uColor.value.setHSL(baseHue / 360, 0.7, 0.6);
+      materialRef.current.uniforms.uIsPlaying.value = THREE.MathUtils.lerp(materialRef.current.uniforms.uIsPlaying.value, isPlaying ? 1.0 : 0.0, 0.05);
 
       if (isPlaying && analyserRef.current && audioCtxRef.current) {
         if (oscRightRef.current) {
-          oscRightRef.current.frequency.setValueAtTime(
-            activePresetData.carrierFreq + currentInstantPulse, 
-            audioCtxRef.current.currentTime
-          );
+          oscRightRef.current.frequency.setTargetAtTime(carrierFreq + currentInstantPulse, audioCtxRef.current.currentTime, 0.1);
         }
 
-        // 1. Rigorous Amplitude Normalization [-1.0, 1.0]
         analyserRef.current.getByteTimeDomainData(byteDataArray);
-        for (let i = 0; i < 256; i++) {
-          const byteData = byteDataArray[i];
-          const normalizedValue = (byteData - 128.0) / 128.0; // 128 (center) -> 0.0
-          floatDataArray[i] = normalizedValue;
+        for (let i = 0; i < 128; i++) {
+          floatDataArray[i] = (byteDataArray[i] - 128.0) / 128.0;
         }
         materialRef.current.uniforms.uAudioBuffer.value.needsUpdate = true;
       }
     }
 
-    if (isPlaying && pulseTextRef.current) {
-      visualPulse.current += (currentInstantPulse - visualPulse.current) * 0.1;
-      pulseTextRef.current.textContent = visualPulse.current.toFixed(1) + " Hz";
+    if (pulseTextRef.current) {
+      visualPulse.current = THREE.MathUtils.lerp(visualPulse.current, isPlaying ? currentInstantPulse : activePresetData.beatFreq, 0.1);
+      pulseTextRef.current.textContent = visualPulse.current.toFixed(2);
     }
 
     if (meshRef.current) {
-      meshRef.current.rotation.z = Math.sin(t * 0.1) * 0.01;
+      meshRef.current.rotation.z = Math.sin(t * 0.05) * 0.02;
     }
   });
 
@@ -121,18 +157,10 @@ function AuroraWaveform({
       void main() {
         vUv = uv;
         vec3 pos = position;
-        
-        // Scientific Audio Extraction [-1.0, 1.0]
         float audioData = texture2D(uAudioBuffer, vec2(vUv.x, 0.5)).r;
-        float audioDisplacement = audioData * uIsPlaying;
-        
-        // Exact Symmetric Distortion & Rigid Box Clamping
-        // Baseline 0.0 is silence. Crests to 1.0, Valleys to -1.0.
-        pos.y = clamp(pos.y + (audioDisplacement * uMaxAmplitude), -1.0, 1.0);
-        
-        // Subtle depth for Aurora look
-        pos.z += audioDisplacement * 0.3;
-        
+        float displacement = audioData * uIsPlaying * uMaxAmplitude;
+        pos.y += displacement * sin(vUv.x * 3.14159);
+        pos.z += displacement * 0.5;
         gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
       }
     `,
@@ -143,24 +171,22 @@ function AuroraWaveform({
       uniform float uIsPlaying;
 
       void main() {
-        // Soft Aurora Gaseous Masking (Diffuse Edge Transparency)
-        float intensity = 1.0 - abs(vUv.y - 0.5) * 2.0;
-        intensity = pow(intensity, 3.0); 
+        float line = 1.0 - smoothstep(0.0, 0.05, abs(vUv.y - 0.5));
+        float glow = 1.0 - abs(vUv.y - 0.5) * 2.0;
+        glow = pow(glow, 4.0);
         
-        float edgeX = smoothstep(0.0, 0.1, vUv.x) * smoothstep(1.0, 0.9, vUv.x);
+        float alpha = (line * 0.5 + glow * 0.8) * uIsPlaying;
+        float pulse = sin(vUv.x * 10.0 - uTime * 2.0) * 0.5 + 0.5;
+        vec3 color = mix(uColor, vec3(1.0), pulse * 0.3);
         
-        // Physical Spectrum Glow
-        float glow = sin(vUv.x * 12.0 - uTime * 2.5) * 0.5 + 0.5;
-        vec3 finalColor = mix(uColor, vec3(1.0), glow * 0.2);
-        
-        gl_FragColor = vec4(finalColor, intensity * edgeX * mix(0.1, 0.9, uIsPlaying));
+        gl_FragColor = vec4(color, alpha * smoothstep(0.0, 0.2, vUv.x) * smoothstep(1.0, 0.8, vUv.x));
       }
     `
   }), []);
 
   return (
-    <mesh ref={meshRef} position={[0, 0, 0]} rotation={[-Math.PI / 15, 0, 0]}>
-      <planeGeometry args={[14, 3, 256, 32]} />
+    <mesh ref={meshRef}>
+      <planeGeometry args={[12, 4, 128, 16]} />
       <shaderMaterial
         ref={materialRef}
         args={[shaderArgs]}
@@ -174,155 +200,245 @@ function AuroraWaveform({
   );
 }
 
-// --- MAIN APPLICATION COMPONENT ---
+/**
+ * MAIN APP COMPONENT
+ */
 export default function BinauralBeatsApp() {
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  const [carrierFreq, setCarrierFreq] = useState<number>(180);
-  const [binauralBeatFreq, setBinauralBeatFreq] = useState<number>(10);
   const [activePreset, setActivePreset] = useState<string>('alpha');
-  
+  const [activeSolfeggio, setActiveSolfeggio] = useState<string>('mi');
+  const [volume, setVolume] = useState<number>(0.7);
+
+  // Refs for Audio Engine
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const masterGainRef = useRef<GainNode | null>(null);
   const oscLeftRef = useRef<OscillatorNode | null>(null);
   const oscRightRef = useRef<OscillatorNode | null>(null);
-  const analyserLeftRef = useRef<AnalyserNode | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
   const pulseTextRef = useRef<HTMLSpanElement | null>(null);
 
-  const presets: WavePreset[] = [
-    { id: 'delta', name: 'Delta', range: '0.5-4Hz', beatFreq: 2.5, carrierFreq: 120, minFreq: 0.5, maxFreq: 4.0, icon: <Moon className="w-4 h-4" /> },
-    { id: 'theta', name: 'Theta', range: '4-8Hz', beatFreq: 6.0, carrierFreq: 150, minFreq: 4.0, maxFreq: 8.0, icon: <Sparkles className="w-4 h-4" /> },
-    { id: 'alpha', name: 'Alpha', range: '8-13Hz', beatFreq: 10.0, carrierFreq: 180, minFreq: 8.0, maxFreq: 13.0, icon: <Compass className="w-4 h-4" /> },
-    { id: 'beta', name: 'Beta', range: '13-30Hz', beatFreq: 18.0, carrierFreq: 220, minFreq: 13.0, maxFreq: 30.0, icon: <Zap className="w-4 h-4" /> },
-    { id: 'gamma', name: 'Gamma', range: '30-50Hz', beatFreq: 38.0, carrierFreq: 260, minFreq: 30.0, maxFreq: 50.0, icon: <Brain className="w-4 h-4" /> },
-  ];
-
-  const currentPresetData = presets.find(p => p.id === activePreset) || presets[2];
+  const currentSolfeggio = useMemo(() => SOLFEGGIO.find(s => s.id === activeSolfeggio) || SOLFEGGIO[2], [activeSolfeggio]);
+  const currentPreset = useMemo(() => PRESETS.find(p => p.id === activePreset) || PRESETS[2], [activePreset]);
   
-  // Inverse Physical Hue Mapping
-  const carrierRatio = Math.max(0, Math.min(1, (carrierFreq - 100) / 250));
-  const baseHue = carrierRatio * 280;
+  const carrierFreq = currentSolfeggio.freq;
+  const baseHue = ((carrierFreq - 396) / (852 - 396)) * 280;
 
-  const loadPreset = (p: WavePreset) => {
-    setCarrierFreq(p.carrierFreq);
-    setBinauralBeatFreq(p.beatFreq);
-    setActivePreset(p.id);
-    if (pulseTextRef.current) pulseTextRef.current.textContent = p.beatFreq.toFixed(1) + " Hz";
-    
-    if (!audioCtxRef.current || !isPlaying) return;
-    const now = audioCtxRef.current.currentTime;
-    oscLeftRef.current?.frequency.setTargetAtTime(p.carrierFreq, now, 1.2);
-  };
+  // Volume modulation with setTargetAtTime
+  useEffect(() => {
+    if (masterGainRef.current && audioCtxRef.current) {
+      masterGainRef.current.gain.setTargetAtTime(volume, audioCtxRef.current.currentTime, 0.05);
+    }
+  }, [volume]);
 
-  const runSoundEngine = async () => {
-    if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+  const initAudio = async () => {
+    if (!audioCtxRef.current) {
+      audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
     const ctx = audioCtxRef.current;
     if (ctx.state === 'suspended') await ctx.resume();
 
+    if (!masterGainRef.current) {
+      masterGainRef.current = ctx.createGain();
+      masterGainRef.current.gain.setValueAtTime(volume, ctx.currentTime);
+      masterGainRef.current.connect(ctx.destination);
+    }
+    return ctx;
+  };
+
+  const toggleSound = async () => {
     if (isPlaying) {
       oscLeftRef.current?.stop();
       oscRightRef.current?.stop();
       setIsPlaying(false);
-      if (pulseTextRef.current) pulseTextRef.current.textContent = binauralBeatFreq.toFixed(1) + " Hz";
     } else {
-      const master = ctx.createGain();
-      master.connect(ctx.destination);
-      const [oL, oR] = [ctx.createOscillator(), ctx.createOscillator()];
-      const aL = ctx.createAnalyser();
-      const [pL, pR] = [ctx.createStereoPanner(), ctx.createStereoPanner()];
+      const ctx = await initAudio();
       
-      aL.fftSize = 256; pL.pan.value = -1; pR.pan.value = 1;
-      
+      const oL = ctx.createOscillator();
+      const oR = ctx.createOscillator();
+      const pL = ctx.createStereoPanner();
+      const pR = ctx.createStereoPanner();
+      const anal = ctx.createAnalyser();
+
+      anal.fftSize = 256;
+      pL.pan.value = -1; // Hard Left
+      pR.pan.value = 1;  // Hard Right
+
       oL.frequency.setValueAtTime(carrierFreq, ctx.currentTime);
-      oR.frequency.setValueAtTime(carrierFreq + binauralBeatFreq, ctx.currentTime);
-      
-      oL.connect(aL).connect(pL).connect(master);
-      oR.connect(pR).connect(master);
-      
+      oR.frequency.setValueAtTime(carrierFreq + currentPreset.beatFreq, ctx.currentTime);
+
+      oL.connect(pL).connect(anal).connect(masterGainRef.current!);
+      oR.connect(pR).connect(masterGainRef.current!);
+
       oL.start(); oR.start();
-      oscLeftRef.current = oL; oscRightRef.current = oR;
-      analyserLeftRef.current = aL;
+      oscLeftRef.current = oL;
+      oscRightRef.current = oR;
+      analyserRef.current = anal;
       setIsPlaying(true);
     }
   };
 
+  const changePreset = (preset: WavePreset) => {
+    setActivePreset(preset.id);
+    if (isPlaying && audioCtxRef.current && oscRightRef.current) {
+      oscRightRef.current.frequency.setTargetAtTime(carrierFreq + preset.beatFreq, audioCtxRef.current.currentTime, 0.2);
+    }
+  };
+
+  const changeSolfeggio = (id: string) => {
+    setActiveSolfeggio(id);
+    const freq = SOLFEGGIO.find(s => s.id === id)?.freq || 528;
+    if (isPlaying && audioCtxRef.current) {
+      oscLeftRef.current?.frequency.setTargetAtTime(freq, audioCtxRef.current.currentTime, 0.2);
+      oscRightRef.current?.frequency.setTargetAtTime(freq + currentPreset.beatFreq, audioCtxRef.current.currentTime, 0.2);
+    }
+  };
+
   useEffect(() => {
-    return () => { if (audioCtxRef.current) { oscLeftRef.current?.stop(); oscRightRef.current?.stop(); } };
+    return () => {
+      oscLeftRef.current?.stop();
+      oscRightRef.current?.stop();
+      audioCtxRef.current?.close();
+    };
   }, []);
 
   return (
-    <Grainient className="fixed inset-0 flex items-center justify-center p-4 font-sans text-white">
+    <Grainient className="fixed inset-0 flex items-center justify-center p-4">
+      {/* Dynamic Background Glow */}
       <div 
         className="absolute inset-0 opacity-20 transition-all duration-1000 pointer-events-none"
-        style={{ background: `radial-gradient(circle at 50% 50%, hsla(${baseHue}, 70%, 50%, 0.15), transparent 70%)` }}
+        style={{ background: `radial-gradient(circle at 50% 50%, hsla(${baseHue}, 70%, 50%, 0.2), transparent 70%)` }}
       />
       
+      {/* 3D Waveform Layer */}
       <div className="absolute inset-0 z-0 pointer-events-none">
-        <Canvas camera={{ position: [0, 0, 5], fov: 45 }}>
-          <ambientLight intensity={0.4} />
+        <Canvas camera={{ position: [0, 0, 5], fov: 40 }}>
           <AuroraWaveform 
             isPlaying={isPlaying} 
-            analyserRef={analyserLeftRef} 
+            analyserRef={analyserRef} 
             baseHue={baseHue} 
-            activePresetData={currentPresetData}
+            activePresetData={currentPreset}
             pulseTextRef={pulseTextRef}
             oscRightRef={oscRightRef}
             audioCtxRef={audioCtxRef}
+            carrierFreq={carrierFreq}
           />
         </Canvas>
       </div>
-      
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="w-full max-w-lg bg-zinc-950/40 backdrop-blur-2xl border border-white/10 shadow-[0_0_80px_rgba(0,0,0,0.9)] rounded-[32px] p-6 z-10 flex flex-col gap-6 relative overflow-hidden"
-      >
-        <div className="absolute inset-0 border border-white/5 rounded-[32px] pointer-events-none" style={{ boxShadow: `inset 0 0 25px hsla(${baseHue}, 70%, 50%, 0.05)` }} />
 
-        <div className="text-center space-y-1">
-          <h2 className="text-[10px] font-bold uppercase tracking-[0.4em] text-white/20">Bio-Neural Sync</h2>
-          <div className="flex items-center justify-center gap-3">
-            <span className="h-1.5 w-1.5 rounded-full animate-pulse" style={{ background: `hsl(${baseHue}, 80%, 60%)` }} />
-            <h1 className="text-sm font-semibold text-white/70 uppercase tracking-widest">Stochastic DSP Engine</h1>
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="w-full max-w-xl bg-zinc-950/60 backdrop-blur-3xl border border-white/10 rounded-[40px] p-5 z-10 flex flex-col gap-4 relative shadow-[0_30px_100px_rgba(0,0,0,0.8)]"
+      >
+        {/* Internal Glow Decor */}
+        <div className="absolute inset-0 rounded-[40px] pointer-events-none" style={{ boxShadow: `inset 0 0 40px hsla(${baseHue}, 60%, 50%, 0.05)` }} />
+
+        {/* Header Telemetry */}
+        <div className="flex justify-between items-end px-2">
+          <div className="space-y-0.5">
+            <h2 className="text-[10px] font-bold uppercase tracking-[0.3em] text-white/30">Neuro-Sync Engine</h2>
+            <div className="flex items-center gap-2">
+              <div className={cn("w-1.5 h-1.5 rounded-full", isPlaying ? "animate-pulse" : "opacity-30")} style={{ backgroundColor: `hsl(${baseHue}, 80%, 60%)` }} />
+              <span className="text-xs font-medium text-white/60 tracking-widest uppercase">STOCHASTIC DSP V2</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-4 bg-white/5 px-4 py-2 rounded-2xl border border-white/5">
+            <Volume2 className="w-3.5 h-3.5 text-white/30" />
+            <input 
+              type="range" min="0" max="1" step="0.01" value={volume} 
+              onChange={(e) => setVolume(parseFloat(e.target.value))}
+              className="w-20 accent-white/40 h-1 rounded-full appearance-none bg-white/10 cursor-pointer"
+            />
           </div>
         </div>
 
-        <div className="grid grid-cols-5 gap-2 w-full">
-          {presets.map((p) => {
-            const pHue = ((p.carrierFreq - 100) / 250) * 280;
-            const isActive = activePreset === p.id;
-            return (
+        {/* Solfeggio Carriers Grid */}
+        <div className="space-y-2">
+          <div className="flex items-center gap-1.5 text-white/40 px-1">
+            <Music className="w-3 h-3" />
+            <span className="text-[9px] font-bold uppercase tracking-widest">Base Carrier Frequency</span>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {SOLFEGGIO.map((s) => (
+              <button
+                key={s.id}
+                onClick={() => changeSolfeggio(s.id)}
+                className={cn(
+                  "relative flex flex-col items-center justify-center p-3 rounded-2xl border transition-all duration-300 overflow-hidden group",
+                  activeSolfeggio === s.id 
+                    ? "border-white/20 bg-white/5 text-white shadow-lg" 
+                    : "border-white/5 bg-white/[0.02] text-white/40 hover:bg-white/[0.05]"
+                )}
+              >
+                <span className="text-xs font-bold font-mono tracking-tight">{s.name}</span>
+                <span className="text-[8px] opacity-60 uppercase tracking-tighter mt-1 block truncate w-full text-center px-1">
+                  {s.description}
+                </span>
+                {activeSolfeggio === s.id && (
+                  <motion.div layoutId="solf-glow" className="absolute inset-0 bg-white/5 pointer-events-none" />
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Brainwave Presets */}
+        <div className="space-y-2">
+          <div className="flex items-center gap-1.5 text-white/40 px-1">
+            <Brain className="w-3 h-3" />
+            <span className="text-[9px] font-bold uppercase tracking-widest">Target Entrainment Band</span>
+          </div>
+          <div className="grid grid-cols-5 gap-2">
+            {PRESETS.map((p) => (
               <button
                 key={p.id}
-                onClick={() => loadPreset(p)}
-                style={{
-                  borderColor: isActive ? `hsla(${pHue}, 70%, 50%, 0.4)` : 'rgba(255,255,255,0.05)',
-                  backgroundColor: isActive ? `hsla(${pHue}, 70%, 50%, 0.08)` : 'rgba(255,255,255,0.02)',
-                  color: isActive ? `hsla(${pHue}, 80%, 70%, 1)` : '#94a3b8'
-                }}
-                className={cn("flex flex-col items-center justify-center p-3 rounded-2xl border transition-all duration-500", isActive && "shadow-[inset_0_0_15px_rgba(255,255,255,0.01)]")}
+                onClick={() => changePreset(p)}
+                className={cn(
+                  "flex flex-col items-center justify-center p-3 rounded-2xl border transition-all duration-500",
+                  activePreset === p.id 
+                    ? "border-white/20 bg-white/10 text-white" 
+                    : "border-white/5 bg-white/[0.01] text-white/30 hover:text-white/50"
+                )}
               >
-                <div className={cn("transition-transform duration-300", isActive && "scale-110")}>{p.icon}</div>
-                <span className="block text-[10px] font-bold mt-2 uppercase tracking-tighter">{p.name}</span>
-                <span className="block font-mono text-[8px] opacity-40 mt-0.5">{p.range}</span>
+                <div className={cn("transition-transform duration-500", activePreset === p.id && "scale-110")}>
+                  {p.icon}
+                </div>
+                <span className="text-[9px] font-bold mt-2 uppercase tracking-tighter">{p.name}</span>
+                <span className="font-mono text-[7px] opacity-30 mt-0.5">{p.range}</span>
               </button>
-            );
-          })}
-        </div>
-
-        <div className="flex justify-center relative">
-          <div className="absolute inset-0 blur-[50px] rounded-full opacity-20 transition-all duration-700" style={{ background: `hsl(${baseHue}, 80%, 50%)` }} />
-          <button onClick={runSoundEngine} className="relative w-20 h-20 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 flex items-center justify-center transition-all duration-300 shadow-2xl group">
-            {isPlaying ? <Pause className="w-8 h-8 text-white/90" /> : <Play className="w-8 h-8 text-white/90 translate-x-0.5" />}
-          </button>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <div className="bg-white/[0.03] p-4 rounded-2xl border border-white/5 flex flex-col items-center text-center">
-            <span className="text-[8px] text-white/20 uppercase tracking-[0.2em] font-bold mb-1">Carrier State</span>
-            <div className="font-mono text-base font-medium text-white/80 tabular-nums">{carrierFreq}<span className="text-[10px] ml-1 opacity-30">Hz</span></div>
+            ))}
           </div>
-          <div className="bg-white/[0.03] p-4 rounded-2xl border border-white/5 flex flex-col items-center text-center">
-            <span className="text-[8px] text-white/20 uppercase tracking-[0.2em] font-bold mb-1">Active Band Sweep</span>
-            <div className="font-mono text-base font-medium text-white/80 tabular-nums"><span ref={pulseTextRef}>{binauralBeatFreq.toFixed(1)} Hz</span></div>
+        </div>
+
+        {/* Main Controls & Telemetry */}
+        <div className="grid grid-cols-12 gap-4 items-center">
+          <div className="col-span-4 bg-white/[0.03] p-4 rounded-[28px] border border-white/5 flex flex-col items-center gap-1">
+            <span className="text-[8px] text-white/20 uppercase font-bold tracking-widest">Carrier</span>
+            <div className="text-xl font-mono font-medium text-white/90 tabular-nums">
+              {carrierFreq}<span className="text-[10px] ml-1 opacity-20">Hz</span>
+            </div>
+          </div>
+
+          <div className="col-span-4 flex justify-center">
+            <button 
+              onClick={toggleSound} 
+              className="w-20 h-20 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 flex items-center justify-center transition-all duration-500 shadow-2xl relative group"
+            >
+              <div className="absolute inset-0 rounded-full blur-2xl opacity-0 group-hover:opacity-20 transition-opacity" style={{ background: `hsl(${baseHue}, 80%, 50%)` }} />
+              {isPlaying ? (
+                <Pause className="w-8 h-8 text-white/90 fill-white/10" />
+              ) : (
+                <Play className="w-8 h-8 text-white/90 translate-x-0.5 fill-white/10" />
+              )}
+            </button>
+          </div>
+
+          <div className="col-span-4 bg-white/[0.03] p-4 rounded-[28px] border border-white/5 flex flex-col items-center gap-1">
+            <span className="text-[8px] text-white/20 uppercase font-bold tracking-widest">Binaural</span>
+            <div className="text-xl font-mono font-medium text-white/90 tabular-nums">
+              <span ref={pulseTextRef}>{currentPreset.beatFreq.toFixed(2)}</span>
+              <span className="text-[10px] ml-1 opacity-20">Hz</span>
+            </div>
           </div>
         </div>
       </motion.div>
