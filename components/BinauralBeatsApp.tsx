@@ -78,7 +78,8 @@ function getFletcherMunsonGain(freq: number): number {
  */
 function AuroraWaveform({ 
   isPlaying, analyserRef, baseHue, activePresetData, pulseTextRef, 
-  oscRightRef, audioCtxRef, carrierFreq, pulseFreq 
+  oscRightRef, audioCtxRef, carrierFreq, pulseFreq, isLfoEnabled,
+  audioStartTimeRef, isochronicModuleRef
 }: any) {
   const meshRef = useRef<THREE.Mesh>(null!);
   const materialRef = useRef<THREE.ShaderMaterial>(null!);
@@ -129,8 +130,29 @@ function AuroraWaveform({
       }
     }
 
-    if (pulseTextRef.current) {
-      pulseTextRef.current.textContent = pulseFreq.toFixed(2);
+    // REAL-TIME LFO SYNC
+    if (isPlaying && audioCtxRef.current && audioStartTimeRef.current > 0) {
+      const audioT = audioCtxRef.current.currentTime;
+      const lfoFreq = 0.05; // 20s cycle
+      
+      // Dynamic LFO Depth Clamping: Ensure we stay within clinical range
+      const marginHigh = activePresetData.maxFreq - pulseFreq;
+      const marginLow = pulseFreq - activePresetData.minFreq;
+      const maxPossibleDepth = Math.min(0.35, marginHigh, marginLow);
+      
+      const lfoVal = isLfoEnabled ? Math.sin((audioT - audioStartTimeRef.current) * 2 * Math.PI * lfoFreq) * maxPossibleDepth : 0;
+      const currentModulatedFreq = pulseFreq + lfoVal;
+
+      if (pulseTextRef.current) {
+        pulseTextRef.current.textContent = currentModulatedFreq.toFixed(2);
+      }
+
+      // Sync Isochronic Layer with same LFO micro-modulation
+      isochronicModuleRef.current?.setPulseFreq(currentModulatedFreq, audioT);
+    } else {
+      if (pulseTextRef.current) {
+        pulseTextRef.current.textContent = pulseFreq.toFixed(2);
+      }
     }
 
     if (meshRef.current) {
@@ -209,6 +231,7 @@ export default function BinauralBeatsApp() {
   const oscRightRef = useRef<OscillatorNode | null>(null);
   const lfoOscRef = useRef<OscillatorNode | null>(null);
   const lfoGainRef = useRef<GainNode | null>(null);
+  const audioStartTimeRef = useRef<number>(0);
   const isochronicModuleRef = useRef<IsochronicModule | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const pulseTextRef = useRef<HTMLSpanElement | null>(null);
@@ -246,9 +269,12 @@ export default function BinauralBeatsApp() {
   useEffect(() => {
     if (lfoGainRef.current && audioCtxRef.current) {
       const now = audioCtxRef.current.currentTime;
-      lfoGainRef.current.gain.setTargetAtTime(isLfoEnabled ? 0.35 : 0, now, 0.5); // Depth of 0.35Hz
+      const marginHigh = currentPreset.maxFreq - pulseFreq;
+      const marginLow = pulseFreq - currentPreset.minFreq;
+      const maxPossibleDepth = Math.max(0, Math.min(0.35, marginHigh, marginLow));
+      lfoGainRef.current.gain.setTargetAtTime(isLfoEnabled ? maxPossibleDepth : 0, now, 0.5); 
     }
-  }, [isLfoEnabled]);
+  }, [isLfoEnabled, currentPreset, pulseFreq]);
 
   const fletcherGain = useMemo(() => getFletcherMunsonGain(carrierFreq), [carrierFreq]);
 
@@ -288,6 +314,7 @@ export default function BinauralBeatsApp() {
     } else {
       const ctx = await initAudio();
       const startTime = ctx.currentTime + 0.2; 
+      audioStartTimeRef.current = startTime;
       if (!analyserRef.current) {
         const anal = ctx.createAnalyser();
         anal.fftSize = 256;
@@ -306,7 +333,12 @@ export default function BinauralBeatsApp() {
       const lfoG = ctx.createGain();
       lfo.type = 'sine';
       lfo.frequency.value = 0.05; // Very slow 20s cycle
-      lfoG.gain.value = isLfoEnabled ? 0.35 : 0;
+      
+      const marginHigh = currentPreset.maxFreq - pulseFreq;
+      const marginLow = pulseFreq - currentPreset.minFreq;
+      const maxPossibleDepth = Math.max(0, Math.min(0.35, marginHigh, marginLow));
+      
+      lfoG.gain.value = isLfoEnabled ? maxPossibleDepth : 0;
       lfo.connect(lfoG).connect(oR.frequency);
       lfo.start(startTime);
       lfoOscRef.current = lfo;
@@ -376,6 +408,7 @@ export default function BinauralBeatsApp() {
             <AuroraWaveform 
               isPlaying={isPlaying} analyserRef={analyserRef} baseHue={baseHue} activePresetData={currentPreset}
               pulseTextRef={pulseTextRef} oscRightRef={oscRightRef} audioCtxRef={audioCtxRef} carrierFreq={carrierFreq} pulseFreq={pulseFreq}
+              isLfoEnabled={isLfoEnabled} audioStartTimeRef={audioStartTimeRef} isochronicModuleRef={isochronicModuleRef}
             />
           </Canvas>
         </div>
