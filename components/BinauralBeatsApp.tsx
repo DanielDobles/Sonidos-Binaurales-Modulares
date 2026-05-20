@@ -329,53 +329,54 @@ export default function BinauralBeatsApp() {
         initial={{ opacity: 0, scale: 1.45, y: 20 }}
         animate={{ opacity: 1, scale: 1.5, y: 0 }}
         transition={{ duration: 0.8, ease: "easeOut" }}
-        className="w-full max-w-xl bg-zinc-950/60 backdrop-blur-3xl border border-white/10 rounded-[48px] p-8 z-10 flex flex-col gap-6 relative shadow-[0_40px_120px_rgba(0,0,0,0.9)] origin-center"
+        className="w-full max-w-xl aspect-square bg-zinc-950/60 backdrop-blur-3xl border border-white/10 rounded-[64px] p-10 z-10 flex flex-col justify-between relative shadow-[0_40px_120px_rgba(0,0,0,0.9)] origin-center"
       >
         {/* Internal Glow Decor */}
-        <div className="absolute inset-0 rounded-[48px] pointer-events-none" style={{ boxShadow: `inset 0 0 60px hsla(${baseHue}, 60%, 50%, 0.08)` }} />
+        <div className="absolute inset-0 rounded-[64px] pointer-events-none" style={{ boxShadow: `inset 0 0 80px hsla(${baseHue}, 60%, 50%, 0.1)` }} />
 
-        {/* Header Telemetry - Golden Ratio Scaling */}
-        <div className="flex justify-between items-start px-1">
-          <div className="space-y-1.5">
-            <h2 className="text-lg font-bold uppercase tracking-[0.25em] text-white/90 leading-tight">
-              Neuro-Sync <span className="text-white/40">Engine</span>
+        {/* Header Telemetry */}
+        <div className="flex justify-between items-start">
+          <div className="space-y-2">
+            <h2 className="text-xl font-bold uppercase tracking-[0.2em] text-white/90 leading-tight">
+              Neuro-Sync <br />
+              <span className="text-white/40">Engine</span>
               <span className="text-[10px] opacity-30 ml-3 font-mono tracking-normal align-top">v1.0.0</span>
             </h2>
-            <div className="flex items-center">
-              <div className={cn("w-2 h-2 rounded-full", isPlaying ? "animate-pulse" : "opacity-20")} style={{ backgroundColor: `hsl(${baseHue}, 80%, 60%)`, boxShadow: isPlaying ? `0 0 12px hsl(${baseHue}, 80%, 60%)` : 'none' }} />
-            </div>
+            <div className={cn("w-2.5 h-2.5 rounded-full", isPlaying ? "animate-pulse" : "opacity-20")} style={{ backgroundColor: `hsl(${baseHue}, 80%, 60%)`, boxShadow: isPlaying ? `0 0 15px hsl(${baseHue}, 80%, 60%)` : 'none' }} />
           </div>
-          <div className="flex items-center gap-5 bg-white/[0.03] px-5 py-3 rounded-2xl border border-white/5 backdrop-blur-md">
-            <Volume2 className="w-4 h-4 text-white/20" />
-            <input 
-              type="range" min="0" max="1" step="0.01" value={volume} 
-              onChange={(e) => setVolume(parseFloat(e.target.value))}
-              className="w-24 accent-white/60 h-1 rounded-full appearance-none bg-white/10 cursor-pointer"
-            />
+          <div className="flex flex-col items-end gap-4">
+            <div className="flex items-center gap-4 bg-white/[0.03] px-5 py-3 rounded-2xl border border-white/5 backdrop-blur-md">
+              <Volume2 className="w-4 h-4 text-white/20" />
+              <input 
+                type="range" min="0" max="1" step="0.01" value={volume} 
+                onChange={(e) => setVolume(parseFloat(e.target.value))}
+                className="w-20 accent-white/60 h-1 rounded-full appearance-none bg-white/10 cursor-pointer"
+              />
+            </div>
           </div>
         </div>
 
-        {/* Solfeggio Carriers Grid - Proportional Spacing */}
-        <div className="space-y-3">
-          <div className="flex items-center gap-2 text-white/30 px-1">
-            <Music className="w-3.5 h-3.5" />
-            <span className="text-[10px] font-bold uppercase tracking-[0.2em]">Resonance Carrier</span>
+        {/* Solfeggio Carriers Grid - Optimized for Square */}
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 text-white/30">
+            <Music className="w-4 h-4" />
+            <span className="text-[10px] font-bold uppercase tracking-[0.3em]">Resonance</span>
           </div>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-3 gap-4">
             {SOLFEGGIO.map((s) => (
               <button
                 key={s.id}
                 onClick={() => changeSolfeggio(s.id)}
                 className={cn(
-                  "relative flex flex-col items-center justify-center p-4 rounded-[20px] border transition-all duration-400 overflow-hidden group",
+                  "relative flex flex-col items-center justify-center aspect-square p-2 rounded-[24px] border transition-all duration-400 overflow-hidden group",
                   activeSolfeggio === s.id 
                     ? "border-white/20 bg-white/5 text-white shadow-[0_8px_32px_rgba(0,0,0,0.4)]" 
-                    : "border-white/5 bg-white/[0.01] text-white/30 hover:bg-white/[0.04] hover:text-white/50"
+                    : "border-white/5 bg-white/[0.01] text-white/30 hover:bg-white/[0.04]"
                 )}
               >
-                <span className="text-sm font-bold font-mono tracking-tight">{s.name}</span>
-                <span className="text-[8px] opacity-40 uppercase tracking-widest mt-1.5 block truncate w-full text-center px-1 font-medium">
-                  {s.description}
+                <span className="text-xs font-bold font-mono">{s.name.split(' ')[0]}</span>
+                <span className="text-[7px] opacity-40 uppercase tracking-tighter mt-1 block truncate w-full text-center px-1 font-medium">
+                  {s.description.split(' ')[0]}
                 </span>
                 {activeSolfeggio === s.id && (
                   <motion.div layoutId="solf-glow" className="absolute inset-0 bg-white/[0.03] pointer-events-none" />
@@ -385,73 +386,59 @@ export default function BinauralBeatsApp() {
           </div>
         </div>
 
-        {/* Brainwave Presets - Harmonized Layout */}
-        <div className="space-y-3">
-          <div className="flex items-center gap-2 text-white/30 px-1">
-            <Brain className="w-3.5 h-3.5" />
-            <span className="text-[10px] font-bold uppercase tracking-[0.2em]">Entrainment Band</span>
-          </div>
-          <div className="grid grid-cols-5 gap-3">
-            {PRESETS.map((p) => (
-              <button
-                key={p.id}
-                onClick={() => changePreset(p)}
-                className={cn(
-                  "flex flex-col items-center justify-center p-4 rounded-[20px] border transition-all duration-500",
-                  activePreset === p.id 
-                    ? "border-white/20 bg-white/10 text-white shadow-lg" 
-                    : "border-white/5 bg-white/[0.01] text-white/20 hover:text-white/40"
-                )}
-              >
-                <div className={cn("transition-transform duration-700", activePreset === p.id ? "scale-110" : "opacity-60")}>
-                  {p.icon}
-                </div>
-                <span className="text-[9px] font-bold mt-3 uppercase tracking-widest">{p.name}</span>
-                <span className="font-mono text-[7px] opacity-20 mt-1">{p.range}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Main Controls & Telemetry - Balanced Visual Weight */}
-        <div className="grid grid-cols-12 gap-6 items-center mt-2">
-          <div className="col-span-4 bg-white/[0.02] p-5 rounded-[32px] border border-white/5 flex flex-col items-center gap-2">
-            <span className="text-[9px] text-white/20 uppercase font-bold tracking-[0.2em]">Carrier</span>
-            <div className="text-2xl font-mono font-light text-white/90 tabular-nums">
-              {carrierFreq}<span className="text-xs ml-1 opacity-20 font-sans">Hz</span>
-            </div>
-          </div>
-
-          <div className="col-span-4 flex justify-center">
-            <button 
-              onClick={toggleSound} 
-              className="w-24 h-24 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 flex items-center justify-center transition-all duration-700 shadow-[0_0_50px_rgba(0,0,0,0.5)] relative group overflow-hidden"
-            >
-              <div className="absolute inset-0 rounded-full blur-3xl opacity-0 group-hover:opacity-30 transition-opacity duration-700" style={{ background: `hsl(${baseHue}, 80%, 50%)` }} />
-              {isPlaying ? (
-                <Pause className="w-10 h-10 text-white/90 fill-white/5" />
-              ) : (
-                <Play className="w-10 h-10 text-white/90 translate-x-1 fill-white/5" />
+        {/* Brainwave Presets - Compact for Square */}
+        <div className="grid grid-cols-5 gap-3">
+          {PRESETS.map((p) => (
+            <button
+              key={p.id}
+              onClick={() => changePreset(p)}
+              className={cn(
+                "flex flex-col items-center justify-center py-4 rounded-[20px] border transition-all duration-500",
+                activePreset === p.id 
+                  ? "border-white/20 bg-white/10 text-white" 
+                  : "border-white/5 bg-white/[0.01] text-white/20 hover:text-white/40"
               )}
+            >
+              <div className={cn("transition-transform duration-700", activePreset === p.id ? "scale-110" : "opacity-60")}>
+                {p.icon}
+              </div>
+              <span className="text-[8px] font-bold mt-2 uppercase tracking-widest">{p.name}</span>
             </button>
+          ))}
+        </div>
+
+        {/* Main Controls & Telemetry */}
+        <div className="flex justify-between items-center gap-6">
+          <div className="flex-1 bg-white/[0.02] p-5 rounded-[32px] border border-white/5 flex flex-col items-center gap-2">
+            <span className="text-[8px] text-white/20 uppercase font-bold tracking-[0.2em]">Carrier</span>
+            <div className="text-xl font-mono font-light text-white/90 tabular-nums">
+              {carrierFreq}<span className="text-[10px] ml-1 opacity-20">Hz</span>
+            </div>
           </div>
 
-          <div className="col-span-4 bg-white/[0.02] p-5 rounded-[32px] border border-white/5 flex flex-col items-center gap-2">
-            <span className="text-[9px] text-white/20 uppercase font-bold tracking-[0.2em]">Binaural</span>
-            <div className="text-2xl font-mono font-light text-white/90 tabular-nums">
+          <button 
+            onClick={toggleSound} 
+            className="w-24 h-24 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 flex items-center justify-center transition-all duration-700 shadow-[0_0_50px_rgba(0,0,0,0.5)] relative group overflow-hidden shrink-0"
+          >
+            <div className="absolute inset-0 rounded-full blur-3xl opacity-0 group-hover:opacity-30 transition-opacity duration-700" style={{ background: `hsl(${baseHue}, 80%, 50%)` }} />
+            {isPlaying ? (
+              <Pause className="w-10 h-10 text-white/90 fill-white/5" />
+            ) : (
+              <Play className="w-10 h-10 text-white/90 translate-x-1 fill-white/5" />
+            )}
+          </button>
+
+          <div className="flex-1 bg-white/[0.02] p-5 rounded-[32px] border border-white/5 flex flex-col items-center gap-2">
+            <span className="text-[8px] text-white/20 uppercase font-bold tracking-[0.2em]">Binaural</span>
+            <div className="text-xl font-mono font-medium text-white/90 tabular-nums">
               <span ref={pulseTextRef}>{currentPreset.beatFreq.toFixed(2)}</span>
-              <span className="text-xs ml-1 opacity-20 font-sans">Hz</span>
+              <span className="text-[10px] ml-1 opacity-20">Hz</span>
             </div>
           </div>
         </div>
 
-        {/* Creator Footer - Final Compositional Anchor */}
-        <div className="mt-4 pt-6 border-t border-white/5 flex flex-col items-center gap-2 opacity-30 hover:opacity-70 transition-opacity duration-700">
-          <div className="flex items-center gap-3">
-            <div className="h-px w-6 bg-white/10" />
-            <span className="text-[8px] uppercase tracking-[0.5em] font-medium text-white/50">Architect & Audio Engineer</span>
-            <div className="h-px w-6 bg-white/10" />
-          </div>
+        {/* Creator Footer */}
+        <div className="pt-6 border-t border-white/5 flex flex-col items-center gap-2 opacity-30 hover:opacity-70 transition-opacity duration-700">
           <span className="text-xs font-bold tracking-[0.3em] uppercase text-white/70">Daniel Dobles</span>
         </div>
       </motion.div>
