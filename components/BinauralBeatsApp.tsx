@@ -130,7 +130,8 @@ function AuroraWaveform({
   const floatDataArray = useMemo(() => new Float32Array(128), []);
   
   const visualPulse = useRef<number>(activePresetData.beatFreq);
-  
+  const lastHue = useRef<number>(baseHue);
+
   const audioTexture = useMemo(() => {
     const tex = new THREE.DataTexture(floatDataArray, 128, 1, THREE.RedFormat, THREE.FloatType);
     tex.needsUpdate = true;
@@ -139,7 +140,9 @@ function AuroraWaveform({
 
   const uniforms = useMemo(() => ({
     uTime: { value: 0 },
-    uColor: { value: new THREE.Color() },
+    uColorPrev: { value: new THREE.Color().setHSL(baseHue / 360, 0.7, 0.6) },
+    uColorNext: { value: new THREE.Color().setHSL(baseHue / 360, 0.7, 0.6) },
+    uMixProgress: { value: 1.0 },
     uAudioBuffer: { value: audioTexture },
     uIsPlaying: { value: 0.0 },
     uMaxAmplitude: { value: 1.5 }
@@ -149,17 +152,34 @@ function AuroraWaveform({
     const { clock } = state;
     const t = clock.getElapsedTime();
     
-    // Modulation of the binaural pulse within the preset range
-    const noiseValue = Math.sin(t * 0.15) * Math.cos(t * 0.07);
-    const range = activePresetData.maxFreq - activePresetData.minFreq;
-    const currentInstantPulse = activePresetData.minFreq + ((noiseValue + 1.0) / 2.0) * range;
+    // 1. Interception Logic for baseHue changes
+    if (baseHue !== lastHue.current) {
+      if (materialRef.current) {
+        const u = materialRef.current.uniforms;
+        // Intercept current color to avoid jumps
+        const currentColor = new THREE.Color().lerpColors(
+          u.uColorPrev.value,
+          u.uColorNext.value,
+          u.uMixProgress.value
+        );
+        u.uColorPrev.value.copy(currentColor);
+        u.uColorNext.value.setHSL(baseHue / 360, 0.7, 0.6);
+        u.uMixProgress.value = 0.0;
+      }
+      lastHue.current = baseHue;
+    }
 
+    // 2. Increment Mix Progress
     if (materialRef.current) {
       materialRef.current.uniforms.uTime.value = t;
-      materialRef.current.uniforms.uColor.value.setHSL(baseHue / 360, 0.7, 0.6);
+      materialRef.current.uniforms.uMixProgress.value = Math.min(materialRef.current.uniforms.uMixProgress.value + 0.07, 1.0);
       materialRef.current.uniforms.uIsPlaying.value = THREE.MathUtils.lerp(materialRef.current.uniforms.uIsPlaying.value, isPlaying ? 1.0 : 0.0, 0.05);
 
       if (isPlaying && analyserRef.current && audioCtxRef.current) {
+        const noiseValue = Math.sin(t * 0.15) * Math.cos(t * 0.07);
+        const range = activePresetData.maxFreq - activePresetData.minFreq;
+        const currentInstantPulse = activePresetData.minFreq + ((noiseValue + 1.0) / 2.0) * range;
+
         if (oscRightRef.current) {
           oscRightRef.current.frequency.setTargetAtTime(carrierFreq + currentInstantPulse, audioCtxRef.current.currentTime, 0.1);
         }
@@ -173,6 +193,9 @@ function AuroraWaveform({
     }
 
     if (pulseTextRef.current) {
+      const noiseValue = Math.sin(t * 0.15) * Math.cos(t * 0.07);
+      const range = activePresetData.maxFreq - activePresetData.minFreq;
+      const currentInstantPulse = activePresetData.minFreq + ((noiseValue + 1.0) / 2.0) * range;
       visualPulse.current = THREE.MathUtils.lerp(visualPulse.current, isPlaying ? currentInstantPulse : activePresetData.beatFreq, 0.1);
       pulseTextRef.current.textContent = visualPulse.current.toFixed(2);
     }
@@ -202,18 +225,23 @@ function AuroraWaveform({
     `,
     fragmentShader: `
       varying vec2 vUv;
-      uniform vec3 uColor;
+      uniform vec3 uColorPrev;
+      uniform vec3 uColorNext;
+      uniform float uMixProgress;
       uniform float uTime;
       uniform float uIsPlaying;
 
       void main() {
+        float sweep = smoothstep(0.0, 1.0, (uMixProgress * 1.6) - (vUv.x * 0.6));
+        vec3 blendedColor = mix(uColorPrev, uColorNext, sweep);
+
         float line = 1.0 - smoothstep(0.0, 0.05, abs(vUv.y - 0.5));
         float glow = 1.0 - abs(vUv.y - 0.5) * 2.0;
         glow = pow(glow, 4.0);
         
         float alpha = (line * 0.5 + glow * 0.8) * uIsPlaying;
         float pulse = sin(vUv.x * 10.0 - uTime * 2.0) * 0.5 + 0.5;
-        vec3 color = mix(uColor, vec3(1.0), pulse * 0.3);
+        vec3 color = mix(blendedColor, vec3(1.0), pulse * 0.3);
         
         gl_FragColor = vec4(color, alpha * smoothstep(0.0, 0.2, vUv.x) * smoothstep(1.0, 0.8, vUv.x));
       }
