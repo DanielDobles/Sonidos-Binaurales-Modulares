@@ -14,7 +14,7 @@ Before performing any edit, you MUST analyze and fully understand the existing U
 ---
 
 ## 2. UI & DESIGN PRESERVATION RULES (Reglas de Preservación de Interfaz)
-* **Aspect Ratios & Scale**: Maintain strict visual spacing. For example, the Intro Card must remain an elegant, naturally self-sizing container without forced fixed dimensions, and the Active Controls Card must keep its spacious `w-full max-w-[550px]` with `scale: 1.5` cinematic zoom.
+* **Aspect Ratios & Scale**: Maintain strict visual spacing. For example, the Intro Card must remain an elegant, naturally self-sizing container without forced fixed dimensions, and the Active Controls Card must keep its spacious `w-full max-w-[550px]` with `scale: 1.25` cinematic zoom.
 * **Typography & Tracking**: Do not allow key titles or labels (like "NEURO-SYNC") to wrap into ugly multi-line segments. Utilize `whitespace-nowrap` and carefully calibrate text size vs. container padding.
 * **Glassmorphism & Depth**: Respect the HSL radial glows, background canvas waves, and `<BorderGlow>` features. Do not replace them with flat or default CSS box designs.
 * **Responsive Independence**: Ensure fixed-width containers do NOT utilize screen-width responsive classes (`md:text-...`) that trigger wrapping bugs when screens change sizes. Font sizing inside fixed cards must be absolute or container-bound.
