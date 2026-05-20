@@ -459,10 +459,15 @@ export default function BinauralBeatsApp() {
 
     return () => {
       oscLeftRef.current?.stop();
+      oscLeftRef.current = null;
       oscRightRef.current?.stop();
+      oscRightRef.current = null;
       if (isochronicModuleRef.current) {
         isochronicModuleRef.current.stop();
+        isochronicModuleRef.current = null;
       }
+      analyserRef.current = null;
+      masterGainRef.current = null;
       
       const ctx = audioCtxRef.current;
       if (ctx && ctx.state !== 'closed') {
