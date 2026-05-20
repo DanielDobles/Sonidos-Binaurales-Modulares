@@ -455,7 +455,7 @@ export default function BinauralBeatsApp() {
       <AnimatePresence mode="wait">
         {!hasStarted ? (
           <motion.div
-            key="intro" initial={{ opacity: 0, scale: 1.15 }} animate={{ opacity: 1, scale: 1.30 }} exit={{ opacity: 0, scale: 1.40 }}
+            key="intro" initial={{ opacity: 0, scale: 1.05 }} animate={{ opacity: 1, scale: 1.20 }} exit={{ opacity: 0, scale: 1.30 }}
             className="fixed inset-0 flex flex-col items-center justify-center z-50 p-4 bg-zinc-950/20 backdrop-blur-sm"
           >
             <BorderGlow className="p-12 md:p-16 pb-14 md:pb-20" borderRadius={42} glowColor={`${baseHue} 80 60`} backgroundColor="rgba(9, 9, 11, 0.8)" animated={true} glowIntensity={1.2} colors={[`hsla(${baseHue}, 80%, 60%, 1)`, `hsla(${baseHue + 40}, 70%, 50%, 1)`, '#ffffff']}>
