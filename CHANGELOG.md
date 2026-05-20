@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.0] - 2026-05-20
+
+### Added
+- **Hybrid Isochronic Engine:** High-precision scheduler-based triggering for sample/synthetic fusion.
+- **Organic Envelopes:** Implemented 50ms attack and 150ms release for pulses to eliminate clicking and improve brainwave induction.
+- **Gain Balancing:** Frequency-dependent gain compensation (Delta attenuation, Gamma boost) for balanced loudness.
+- **Diagnostics:** Comprehensive audio graph logging system for real-time DSP monitoring.
+
+### Changed
+- **Default Experience:** Hybrid mode and 100% isochronic intensity now active on play by default.
+- **Nomenclature:** "Beat Frequency" label officially renamed to "Binaural" for better brand alignment.
+
+### Fixed
+- **Filter Sync:** Resolved "silence-at-start" bug by synchronizing Bandpass filter frequency with the carrier on microsecond 0.
+- **Scheduler Drift:** Fixed pulse burst issues by recalculating start times post-buffer load.
+
 ## [1.0.0] - 2026-05-20
 
 ### Added
