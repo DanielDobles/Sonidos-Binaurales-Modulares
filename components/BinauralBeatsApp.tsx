@@ -463,8 +463,9 @@ export default function BinauralBeatsApp() {
       if (isochronicModuleRef.current) {
         isochronicModuleRef.current.stop();
       }
-      if (audioCtxRef.current) {
-        audioCtxRef.current.close();
+      if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
+        audioCtxRef.current.close().catch(console.error);
+        audioCtxRef.current = null;
       }
     };
   }, [initAudio]);
