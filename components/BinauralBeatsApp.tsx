@@ -262,8 +262,9 @@ function getWeightingGain(f: number): number {
 export default function BinauralBeatsApp() {
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [hasStarted, setHasStarted] = useState<boolean>(false);
-  const [isIsoEnabled, setIsIsoEnabled] = useState<boolean>(false);
-  const [isoIntensity, setIsoIntensity] = useState<number>(0.5);
+  const [isIsoEnabled, setIsIsoEnabled] = useState<boolean>(true); // Enabled by default for "Hybrid" experience
+  /* CRITICAL: Default intensity MUST remain 1.0 (100%). DO NOT CHANGE. */
+  const [isoIntensity, setIsoIntensity] = useState<number>(1.0);
   const [pulseType, setPulseType] = useState<'sine' | 'square'>('square');
   const [activePreset, setActivePreset] = useState<string>('alpha');
   const [activeSolfeggio, setActiveSolfeggio] = useState<string>('mi');
@@ -334,22 +335,29 @@ export default function BinauralBeatsApp() {
 
   const initAudio = useCallback(async () => {
     if (!audioCtxRef.current) {
+      console.log("BinauralBeatsApp: Creating new AudioContext");
       audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
     }
     const ctx = audioCtxRef.current;
-    if (ctx.state === 'suspended') await ctx.resume();
+    console.log(`BinauralBeatsApp: AudioContext state is ${ctx.state}`);
+    if (ctx.state === 'suspended') {
+        console.log("BinauralBeatsApp: Resuming AudioContext...");
+        await ctx.resume();
+        console.log(`BinauralBeatsApp: AudioContext resumed. State: ${ctx.state}`);
+    }
 
     if (!masterGainRef.current) {
+      console.log("BinauralBeatsApp: Initializing Master Gain");
       masterGainRef.current = ctx.createGain();
       masterGainRef.current.gain.setValueAtTime(0, ctx.currentTime);
       masterGainRef.current.connect(ctx.destination);
     }
 
     if (!isochronicModuleRef.current) {
+      console.log("BinauralBeatsApp: Initializing IsochronicModule");
       isochronicModuleRef.current = new IsochronicModule(ctx);
-      // Wait for the analyser to be created in toggleSound or create it here
-      // To be safe, we'll connect it when toggleSound runs or here if anal exists
       if (analyserRef.current) {
+        console.log("BinauralBeatsApp: Connecting IsochronicModule to existing Analyser");
         isochronicModuleRef.current.connect(analyserRef.current);
       }
     }
@@ -358,6 +366,7 @@ export default function BinauralBeatsApp() {
   }, []);
 
   const toggleSound = useCallback(async () => {
+    console.log(`BinauralBeatsApp: toggleSound called. isPlaying: ${isPlaying}`);
     if (isPlaying) {
       oscLeftRef.current?.stop();
       oscLeftRef.current = null;
@@ -366,11 +375,16 @@ export default function BinauralBeatsApp() {
       isochronicModuleRef.current?.stop();
       setIsPlaying(false);
       setHasStarted(false);
+      console.log("BinauralBeatsApp: Audio stopped.");
     } else {
       const ctx = await initAudio();
-      const startTime = ctx.currentTime + 0.1; // Master Clock for phase sync
+      
+      // Coordinated startTime with slightly more lookahead for safety (0.2s)
+      const startTime = ctx.currentTime + 0.2; 
+      console.log(`BinauralBeatsApp: Starting audio at ${startTime.toFixed(2)} (Actual: ${ctx.currentTime.toFixed(2)})`);
       
       if (!analyserRef.current) {
+        console.log("BinauralBeatsApp: Initializing Analyser");
         const anal = ctx.createAnalyser();
         anal.fftSize = 256;
         analyserRef.current = anal;
@@ -378,9 +392,11 @@ export default function BinauralBeatsApp() {
       }
       
       // Ensure isochronic module is connected to analyser
+      console.log("BinauralBeatsApp: Connecting IsochronicModule to Analyser");
       isochronicModuleRef.current?.connect(analyserRef.current!);
 
       // Binaural Layer
+      console.log("BinauralBeatsApp: Starting Binaural Layer...");
       const oL = ctx.createOscillator();
       const oR = ctx.createOscillator();
       const pL = ctx.createStereoPanner();
@@ -401,11 +417,13 @@ export default function BinauralBeatsApp() {
       oscRightRef.current = oR;
 
       // Isochronic Layer
+      console.log(`BinauralBeatsApp: Starting Isochronic Layer (isIsoEnabled: ${isIsoEnabled})...`);
       isochronicModuleRef.current!.setPulseType(pulseType);
       isochronicModuleRef.current!.setIntensity(isIsoEnabled ? isoIntensity : 0, startTime);
       isochronicModuleRef.current!.start(startTime, carrierFreq, pulseFreq);
 
       // Cinematic Fade-In
+      console.log("BinauralBeatsApp: Executing Cinematic Fade-In");
       masterGainRef.current!.gain.cancelScheduledValues(ctx.currentTime);
       masterGainRef.current!.gain.setValueAtTime(0.001, ctx.currentTime);
       masterGainRef.current!.gain.exponentialRampToValueAtTime(
@@ -735,7 +753,8 @@ export default function BinauralBeatsApp() {
                 </button>
 
                 <div className="flex-1 bg-white/[0.02] py-4 rounded-[24px] border border-white/5 flex flex-col items-center gap-1 transition-opacity duration-1000">
-                  <span className="text-[7px] text-white/20 uppercase font-bold tracking-[0.2em]">Beat Frequency</span>  
+                  {/* CRITICAL: This label MUST remain 'Binaural'. DO NOT CHANGE. */}
+                  <span className="text-[7px] text-white/20 uppercase font-bold tracking-[0.2em]">Binaural</span>  
                   <div className="text-lg font-mono font-medium text-white/80 tabular-nums">
                     <span ref={pulseTextRef}>{currentPreset.beatFreq.toFixed(2)}</span>
                     <span className="text-[9px] ml-0.5 opacity-20">Hz</span>
