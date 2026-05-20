@@ -10,32 +10,40 @@ import * as THREE from 'three';
 
 function cn(...inputs: ClassValue[]) { return twMerge(clsx(inputs)); }
 
-interface WavePreset { id: string; name: string; range: string; beatFreq: number; carrierFreq: number; icon: React.ReactNode; }
+interface WavePreset { 
+  id: string; 
+  name: string; 
+  range: string; 
+  beatFreq: number; 
+  carrierFreq: number; 
+  minFreq: number; 
+  maxFreq: number; 
+  icon: React.ReactNode; 
+}
 
-// --- PRECISION OSCILLOSCOPE SHADER COMPONENT ---
+// --- NEURO-SPATIAL AURORA ENGINE ---
 function AuroraWaveform({ 
   isPlaying, 
   analyserRef, 
   baseHue, 
-  binauralBeatFreq, 
+  activePresetData,
   pulseTextRef, 
-  startTimeRef 
+  oscRightRef,
+  audioCtxRef
 }: { 
   isPlaying: boolean;
   analyserRef: React.RefObject<AnalyserNode | null>;
   baseHue: number;
-  binauralBeatFreq: number;
+  activePresetData: WavePreset;
   pulseTextRef: React.RefObject<HTMLSpanElement | null>;
-  startTimeRef: React.RefObject<number>;
+  oscRightRef: React.RefObject<OscillatorNode | null>;
+  audioCtxRef: React.RefObject<AudioContext | null>;
 }) {
   const meshRef = useRef<THREE.Mesh>(null!);
   const materialRef = useRef<THREE.ShaderMaterial>(null!);
-  
-  // High-density data buffer for normalization
   const byteDataArray = useMemo(() => new Uint8Array(256), []);
   const floatDataArray = useMemo(() => new Float32Array(256), []);
   
-  // Using RedFormat with FloatType for precise -1.0 to 1.0 mapping
   const audioTexture = useMemo(() => {
     const tex = new THREE.DataTexture(floatDataArray, 256, 1, THREE.RedFormat, THREE.FloatType);
     tex.needsUpdate = true;
@@ -46,23 +54,38 @@ function AuroraWaveform({
     uTime: { value: 0 },
     uColor: { value: new THREE.Color() },
     uAudioBuffer: { value: audioTexture },
-    uFrequency: { value: binauralBeatFreq },
+    uPulseFrequency: { value: 10.0 },
     uIsPlaying: { value: 0.0 }
-  }), [audioTexture, binauralBeatFreq]);
+  }), [audioTexture]);
 
   useFrame((state) => {
     const { clock } = state;
-    const time = clock.getElapsedTime();
+    const t = clock.getElapsedTime();
     
+    // 1. Stochastic Band-Limited Modulation (Noise Simulation)
+    const noiseValue = Math.sin(t * 0.4) * Math.cos(t * 0.15) * Math.sin(t * 0.08); // Multi-octave wave
+    const range = activePresetData.maxFreq - activePresetData.minFreq;
+    const currentInstantPulse = activePresetData.minFreq + ((noiseValue + 1.0) / 2.0) * range;
+
+    // 2. Audio-Visual Hardware Injection
     if (materialRef.current) {
-      materialRef.current.uniforms.uTime.value = time;
+      materialRef.current.uniforms.uTime.value = t;
       materialRef.current.uniforms.uColor.value.setHSL(baseHue / 360, 0.8, 0.5);
-      materialRef.current.uniforms.uFrequency.value = binauralBeatFreq;
+      materialRef.current.uniforms.uPulseFrequency.value = currentInstantPulse;
       materialRef.current.uniforms.uIsPlaying.value = isPlaying ? 1.0 : 0.0;
 
-      if (isPlaying && analyserRef.current) {
+      if (isPlaying && analyserRef.current && audioCtxRef.current) {
+        // Real-time Audio Graph Mutation (Zero-latency)
+        if (oscRightRef.current) {
+          oscRightRef.current.frequency.setTargetAtTime(
+            activePresetData.carrierFreq + currentInstantPulse, 
+            audioCtxRef.current.currentTime, 
+            0.016 // Interpolate over 1 frame to prevent clicks
+          );
+        }
+
+        // Buffer Normalization
         analyserRef.current.getByteTimeDomainData(byteDataArray);
-        // Scientific Normalization: byte 128 -> 0.0, byte 255 -> 1.0, byte 0 -> -1.0
         for (let i = 0; i < 256; i++) {
           floatDataArray[i] = (byteDataArray[i] - 128) / 128.0;
         }
@@ -70,15 +93,13 @@ function AuroraWaveform({
       }
     }
 
-    // High-Frequency Pulse Telemetry (60 FPS DOM Injection)
+    // 3. Telemetry Inversion (60 FPS DOM Injection)
     if (isPlaying && pulseTextRef.current) {
-      const elapsed = (Date.now() - startTimeRef.current) / 1000;
-      const currentPulse = binauralBeatFreq + (Math.sin(elapsed * Math.PI * 2 * 0.04) * 0.3);
-      pulseTextRef.current.textContent = currentPulse.toFixed(1) + " Hz";
+      pulseTextRef.current.textContent = currentInstantPulse.toFixed(1) + " Hz";
     }
 
     if (meshRef.current) {
-      meshRef.current.rotation.z = Math.sin(time * 0.1) * 0.01;
+      meshRef.current.rotation.z = Math.sin(t * 0.1) * 0.01;
     }
   });
 
@@ -86,30 +107,23 @@ function AuroraWaveform({
     vertexShader: `
       varying vec2 vUv;
       uniform float uTime;
-      uniform float uFrequency;
+      uniform float uPulseFrequency;
       uniform float uIsPlaying;
       uniform sampler2D uAudioBuffer;
       
       void main() {
         vUv = uv;
         vec3 pos = position;
-        
-        // Read scientific normalized data (-1.0 to 1.0)
         float audioData = texture2D(uAudioBuffer, vec2(vUv.x, 0.5)).r;
         
-        // Locked Oscilloscope Displacement
-        float amplitudeScale = mix(0.1, 2.5, uIsPlaying);
-        float displacement = audioData * amplitudeScale;
+        // Pulse-driven dynamics: faster vibration for higher frequencies
+        float displacement = audioData * mix(0.1, 2.8, uIsPlaying);
+        float pulseSpeed = uPulseFrequency * 0.1;
+        float latentWave = sin(pos.x * 2.0 + uTime * (2.0 + pulseSpeed)) * 0.15;
         
-        // Latent wave for idle state
-        float idleWave = sin(pos.x * 2.0 + uTime * 2.0) * 0.1;
-        
-        // Apply displacement and clamp strictly to center bounds
-        pos.y += mix(idleWave, displacement, uIsPlaying);
-        pos.y = clamp(pos.y, -2.0, 2.0);
-        
-        // Subtle depth for Aurora feel
-        pos.z += displacement * 0.5;
+        pos.y += mix(latentWave, displacement, uIsPlaying);
+        pos.y = clamp(pos.y, -3.0, 3.0);
+        pos.z += displacement * 1.5;
         
         gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
       }
@@ -118,25 +132,24 @@ function AuroraWaveform({
       varying vec2 vUv;
       uniform vec3 uColor;
       uniform float uTime;
-      uniform float uIsPlaying;
+      uniform float uPulseFrequency;
 
       void main() {
-        // High-precision Soft Aurora masking
         float edgeY = smoothstep(0.0, 0.5, vUv.y) * smoothstep(1.0, 0.5, vUv.y);
         float edgeX = smoothstep(0.0, 0.1, vUv.x) * smoothstep(1.0, 0.9, vUv.x);
-        float glow = sin(vUv.x * 20.0 + uTime * 2.0) * 0.5 + 0.5;
         
-        vec3 finalColor = mix(uColor, vec3(1.0), glow * 0.15);
-        float alpha = edgeY * edgeX * mix(0.2, 0.7, uIsPlaying);
+        // High-frequency ripple texture based on active pulse
+        float ripple = sin(vUv.x * (10.0 + uPulseFrequency) + uTime * 2.0) * 0.5 + 0.5;
+        vec3 finalColor = mix(uColor, vec3(1.0), ripple * 0.2);
         
-        gl_FragColor = vec4(finalColor, alpha);
+        gl_FragColor = vec4(finalColor, edgeY * edgeX * 0.6);
       }
     `
   }), []);
 
   return (
     <mesh ref={meshRef} position={[0, 0, 0]} rotation={[-Math.PI / 12, 0, 0]}>
-      <planeGeometry args={[14, 4, 256, 32]} />
+      <planeGeometry args={[14, 6, 256, 32]} />
       <shaderMaterial
         ref={materialRef}
         args={[shaderArgs]}
@@ -150,6 +163,7 @@ function AuroraWaveform({
   );
 }
 
+// --- MAIN APPLICATION COMPONENT ---
 export default function BinauralBeatsApp() {
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [carrierFreq, setCarrierFreq] = useState<number>(180);
@@ -159,37 +173,29 @@ export default function BinauralBeatsApp() {
   const audioCtxRef = useRef<AudioContext | null>(null);
   const oscLeftRef = useRef<OscillatorNode | null>(null);
   const oscRightRef = useRef<OscillatorNode | null>(null);
-  const lfoRef = useRef<OscillatorNode | null>(null);
-  const lfoGainRef = useRef<GainNode | null>(null);
   const analyserLeftRef = useRef<AnalyserNode | null>(null);
-  
   const pulseTextRef = useRef<HTMLSpanElement | null>(null);
-  const startTimeRef = useRef<number>(Date.now());
 
   const presets: WavePreset[] = [
-    { id: 'delta', name: 'Delta', range: '1-4Hz', beatFreq: 2.5, carrierFreq: 120, icon: <Moon className="w-4 h-4" /> },
-    { id: 'theta', name: 'Theta', range: '4-8Hz', beatFreq: 6.0, carrierFreq: 150, icon: <Sparkles className="w-4 h-4" /> },
-    { id: 'alpha', name: 'Alpha', range: '8-12Hz', beatFreq: 10.0, carrierFreq: 180, icon: <Compass className="w-4 h-4" /> },
-    { id: 'beta', name: 'Beta', range: '12-30Hz', beatFreq: 18.0, carrierFreq: 220, icon: <Zap className="w-4 h-4" /> },
-    { id: 'gamma', name: 'Gamma', range: '30-45Hz', beatFreq: 38.0, carrierFreq: 260, icon: <Brain className="w-4 h-4" /> },
+    { id: 'delta', name: 'Delta', range: '0.5-4Hz', beatFreq: 2.5, carrierFreq: 120, minFreq: 0.5, maxFreq: 4.0, icon: <Moon className="w-4 h-4" /> },
+    { id: 'theta', name: 'Theta', range: '4-8Hz', beatFreq: 6.0, carrierFreq: 150, minFreq: 4.0, maxFreq: 8.0, icon: <Sparkles className="w-4 h-4" /> },
+    { id: 'alpha', name: 'Alpha', range: '8-13Hz', beatFreq: 10.0, carrierFreq: 180, minFreq: 8.0, maxFreq: 13.0, icon: <Compass className="w-4 h-4" /> },
+    { id: 'beta', name: 'Beta', range: '13-30Hz', beatFreq: 18.0, carrierFreq: 220, minFreq: 13.0, maxFreq: 30.0, icon: <Zap className="w-4 h-4" /> },
+    { id: 'gamma', name: 'Gamma', range: '30-50Hz', beatFreq: 38.0, carrierFreq: 260, minFreq: 30.0, maxFreq: 50.0, icon: <Brain className="w-4 h-4" /> },
   ];
 
+  const currentPresetData = presets.find(p => p.id === activePreset) || presets[2];
   const carrierRatio = Math.max(0, Math.min(1, (carrierFreq - 100) / 250));
   const baseHue = carrierRatio * 280;
-
-  const updateFrequencies = useCallback((base: number, beat: number) => {
-    if (!audioCtxRef.current || !isPlaying) return;
-    const now = audioCtxRef.current.currentTime;
-    oscLeftRef.current?.frequency.setTargetAtTime(base, now, 1.2);
-    oscRightRef.current?.frequency.setTargetAtTime(base + beat, now, 1.2);
-  }, [isPlaying]);
 
   const loadPreset = (p: WavePreset) => {
     setCarrierFreq(p.carrierFreq);
     setBinauralBeatFreq(p.beatFreq);
     setActivePreset(p.id);
-    updateFrequencies(p.carrierFreq, p.beatFreq);
-    if (pulseTextRef.current) pulseTextRef.current.textContent = p.beatFreq.toFixed(1) + " Hz";
+    if (!audioCtxRef.current || !isPlaying) return;
+    const now = audioCtxRef.current.currentTime;
+    oscLeftRef.current?.frequency.setTargetAtTime(p.carrierFreq, now, 1.2);
+    // Right oscillator will be modulated by the useFrame loop immediately
   };
 
   const runSoundEngine = async () => {
@@ -200,47 +206,32 @@ export default function BinauralBeatsApp() {
     if (isPlaying) {
       oscLeftRef.current?.stop();
       oscRightRef.current?.stop();
-      if (lfoRef.current) { try { lfoRef.current.stop(); lfoRef.current.disconnect(); } catch(e){} lfoRef.current = null; }
-      if (lfoGainRef.current) { lfoGainRef.current.disconnect(); lfoGainRef.current = null; }
       setIsPlaying(false);
       if (pulseTextRef.current) pulseTextRef.current.textContent = binauralBeatFreq.toFixed(1) + " Hz";
     } else {
-      startTimeRef.current = Date.now();
       const master = ctx.createGain();
       master.connect(ctx.destination);
       const [oL, oR] = [ctx.createOscillator(), ctx.createOscillator()];
       const aL = ctx.createAnalyser();
       const [pL, pR] = [ctx.createStereoPanner(), ctx.createStereoPanner()];
       
-      const lfo = ctx.createOscillator();
-      const lfoGain = ctx.createGain();
-      lfo.frequency.value = 0.04;
-      lfoGain.gain.value = 0.3;
-      
       aL.fftSize = 256; pL.pan.value = -1; pR.pan.value = 1;
+      
       oL.frequency.setValueAtTime(carrierFreq, ctx.currentTime);
       oR.frequency.setValueAtTime(carrierFreq + binauralBeatFreq, ctx.currentTime);
       
       oL.connect(aL).connect(pL).connect(master);
       oR.connect(pR).connect(master);
-      lfo.connect(lfoGain).connect(oR.frequency);
       
-      oL.start(); oR.start(); lfo.start();
+      oL.start(); oR.start();
       oscLeftRef.current = oL; oscRightRef.current = oR;
-      lfoRef.current = lfo; lfoGainRef.current = lfoGain;
       analyserLeftRef.current = aL;
       setIsPlaying(true);
     }
   };
 
   useEffect(() => {
-    return () => {
-      if (audioCtxRef.current) {
-        oscLeftRef.current?.stop(); oscRightRef.current?.stop();
-        if (lfoRef.current) { try { lfoRef.current.stop(); lfoRef.current.disconnect(); } catch(e){} }
-        if (lfoGainRef.current) lfoGainRef.current.disconnect();
-      }
-    };
+    return () => { if (audioCtxRef.current) { oscLeftRef.current?.stop(); oscRightRef.current?.stop(); } };
   }, []);
 
   return (
@@ -257,9 +248,10 @@ export default function BinauralBeatsApp() {
             isPlaying={isPlaying} 
             analyserRef={analyserLeftRef} 
             baseHue={baseHue} 
-            binauralBeatFreq={binauralBeatFreq}
+            activePresetData={currentPresetData}
             pulseTextRef={pulseTextRef}
-            startTimeRef={startTimeRef}
+            oscRightRef={oscRightRef}
+            audioCtxRef={audioCtxRef}
           />
         </Canvas>
       </div>
@@ -272,10 +264,10 @@ export default function BinauralBeatsApp() {
         <div className="absolute inset-0 border border-white/5 rounded-[32px] pointer-events-none" style={{ boxShadow: `inset 0 0 25px hsla(${baseHue}, 70%, 50%, 0.05)` }} />
 
         <div className="text-center space-y-1">
-          <h2 className="text-[10px] font-bold uppercase tracking-[0.4em] text-white/20">Psychoacoustic Processor</h2>
+          <h2 className="text-[10px] font-bold uppercase tracking-[0.4em] text-white/20">Bio-Neural Sync</h2>
           <div className="flex items-center justify-center gap-3">
             <span className="h-1.5 w-1.5 rounded-full animate-pulse" style={{ background: `hsl(${baseHue}, 80%, 60%)` }} />
-            <h1 className="text-sm font-semibold text-white/70 uppercase tracking-widest">Precision Oscilloscope</h1>
+            <h1 className="text-sm font-semibold text-white/70 uppercase tracking-widest">Stochastic Band Sweep</h1>
           </div>
         </div>
 
@@ -310,12 +302,12 @@ export default function BinauralBeatsApp() {
         </div>
 
         <div className="grid grid-cols-2 gap-4">
-          <div className="bg-white/[0.03] p-4 rounded-2xl border border-white/5 flex flex-col items-center">
+          <div className="bg-white/[0.03] p-4 rounded-2xl border border-white/5 flex flex-col items-center text-center">
             <span className="text-[8px] text-white/20 uppercase tracking-[0.2em] font-bold mb-1">Carrier State</span>
             <div className="font-mono text-base font-medium text-white/80 tabular-nums">{carrierFreq}<span className="text-[10px] ml-1 opacity-30">Hz</span></div>
           </div>
-          <div className="bg-white/[0.03] p-4 rounded-2xl border border-white/5 flex flex-col items-center">
-            <span className="text-[8px] text-white/20 uppercase tracking-[0.2em] font-bold mb-1">Pulse Resonance</span>
+          <div className="bg-white/[0.03] p-4 rounded-2xl border border-white/5 flex flex-col items-center text-center">
+            <span className="text-[8px] text-white/20 uppercase tracking-[0.2em] font-bold mb-1">Active Band Sweep</span>
             <div className="font-mono text-base font-medium text-white/80 tabular-nums"><span ref={pulseTextRef}>{binauralBeatFreq.toFixed(1)} Hz</span></div>
           </div>
         </div>
