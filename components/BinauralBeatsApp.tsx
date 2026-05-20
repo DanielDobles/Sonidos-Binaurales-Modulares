@@ -8,7 +8,6 @@ import { twMerge } from 'tailwind-merge';
 
 function cn(...inputs: ClassValue[]) { return twMerge(clsx(inputs)); }
 
-interface ModulationStep { stepName: string; carrierOffset: number; beatOffset: number; }
 interface WavePreset { id: string; name: string; range: string; beatFreq: number; carrierFreq: number; icon: React.ReactNode; }
 
 export default function BinauralBeatsApp() {
@@ -16,22 +15,14 @@ export default function BinauralBeatsApp() {
   const [carrierFreq, setCarrierFreq] = useState<number>(180);
   const [binauralBeatFreq, setBinauralBeatFreq] = useState<number>(10);
   const [activePreset, setActivePreset] = useState<string>('alpha');
-  const [currentModStep, setCurrentModStep] = useState<number>(0);
   
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const oscLeftRef = useRef<OscillatorNode | null>(null);
   const oscRightRef = useRef<OscillatorNode | null>(null);
+  const lfoRef = useRef<OscillatorNode | null>(null);
+  const lfoGainRef = useRef<GainNode | null>(null);
   const analyserLeftRef = useRef<AnalyserNode | null>(null);
-
-  const modulationSteps: ModulationStep[] = [
-    { stepName: 'Sync', carrierOffset: 0, beatOffset: 0 },
-    { stepName: 'Optimize', carrierOffset: 4, beatOffset: 0.3 },
-    { stepName: 'Align', carrierOffset: -3, beatOffset: -0.2 },
-    { stepName: 'Stabilize', carrierOffset: 6, beatOffset: 0.5 },
-    { stepName: 'Resonate', carrierOffset: -5, beatOffset: -0.4 },
-    { stepName: 'Harmonize', carrierOffset: 2, beatOffset: 0 }
-  ];
 
   const presets: WavePreset[] = [
     { id: 'delta', name: 'Delta', range: '1-4Hz', beatFreq: 2.5, carrierFreq: 120, icon: <Moon className="w-4 h-4" /> },
@@ -44,27 +35,20 @@ export default function BinauralBeatsApp() {
   const carrierRatio = Math.max(0, Math.min(1, (carrierFreq - 100) / 250));
   const baseHue = carrierRatio * 280;
 
-  const getClampedBeat = (baseBeat: number, offset: number) => {
-    const ranges = [[1,4], [4,8], [8,12], [12,30], [30,45]];
-    const band = ranges.find(r => baseBeat >= r[0] && baseBeat <= r[1]) || [1,45];
-    return Math.min(band[1], Math.max(band[0], baseBeat + offset));
-  };
-
   const updateFrequencies = useCallback((base: number, beat: number) => {
     if (!audioCtxRef.current || !isPlaying) return;
-    const mod = modulationSteps[currentModStep];
-    const actualBase = Math.max(80, base + mod.carrierOffset);
-    const actualBeat = getClampedBeat(beat, mod.beatOffset);
     const now = audioCtxRef.current.currentTime;
-    oscLeftRef.current?.frequency.setTargetAtTime(actualBase - (actualBeat / 2), now, 1.2);
-    oscRightRef.current?.frequency.setTargetAtTime(actualBase + (actualBeat / 2), now, 1.2);
-  }, [isPlaying, currentModStep]);
+    
+    // Left ear plays base frequency, Right ear plays base + beat
+    // This creates the binaural beat frequency difference
+    oscLeftRef.current?.frequency.setTargetAtTime(base, now, 1.2);
+    oscRightRef.current?.frequency.setTargetAtTime(base + beat, now, 1.2);
+  }, [isPlaying]);
 
   const loadPreset = (p: WavePreset) => {
     setCarrierFreq(p.carrierFreq);
     setBinauralBeatFreq(p.beatFreq);
     setActivePreset(p.id);
-    setCurrentModStep(0);
     updateFrequencies(p.carrierFreq, p.beatFreq);
   };
 
@@ -72,23 +56,58 @@ export default function BinauralBeatsApp() {
     if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
     const ctx = audioCtxRef.current;
     if (ctx.state === 'suspended') await ctx.resume();
-    if (isPlaying) { oscLeftRef.current?.stop(); oscRightRef.current?.stop(); setIsPlaying(false); }
-    else {
+
+    if (isPlaying) {
+      // Safe shutdown
+      oscLeftRef.current?.stop();
+      oscRightRef.current?.stop();
+      if (lfoRef.current) {
+        try { lfoRef.current.stop(); lfoRef.current.disconnect(); } catch(e){}
+        lfoRef.current = null;
+      }
+      if (lfoGainRef.current) {
+        lfoGainRef.current.disconnect();
+        lfoGainRef.current = null;
+      }
+      setIsPlaying(false);
+    } else {
       const master = ctx.createGain(); master.connect(ctx.destination);
+      
       const [oL, oR] = [ctx.createOscillator(), ctx.createOscillator()];
-      const [aL, aR] = [ctx.createAnalyser(), ctx.createAnalyser()];
+      const aL = ctx.createAnalyser();
       const [pL, pR] = [ctx.createStereoPanner(), ctx.createStereoPanner()];
+      
+      // Native LFO for micro-transitions (Anti-habituation)
+      const lfo = ctx.createOscillator();
+      const lfoGain = ctx.createGain();
+      
+      lfo.frequency.value = 0.04; // Very slow 25s cycle
+      lfoGain.gain.value = 0.3;    // Subtle ±0.3Hz variation
+      
       aL.fftSize = 2048; pL.pan.value = -1; pR.pan.value = 1;
+      
+      // Routing
       oL.connect(aL).connect(pL).connect(master);
-      oR.connect(aR).connect(pR).connect(master);
-      oL.start(); oR.start();
-      oscLeftRef.current = oL; oscRightRef.current = oR;
+      oR.connect(pR).connect(master);
+      
+      // Connect LFO to Right Oscillator frequency
+      lfo.connect(lfoGain);
+      lfoGain.connect(oR.frequency);
+      
+      oL.start(); oR.start(); lfo.start();
+      
+      oscLeftRef.current = oL;
+      oscRightRef.current = oR;
+      lfoRef.current = lfo;
+      lfoGainRef.current = lfoGain;
       analyserLeftRef.current = aL;
+      
       setIsPlaying(true);
       updateFrequencies(carrierFreq, binauralBeatFreq);
     }
   };
 
+  // Canvas visualizer
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -116,6 +135,20 @@ export default function BinauralBeatsApp() {
     };
     render();
   }, [isPlaying, baseHue]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (audioCtxRef.current) {
+        oscLeftRef.current?.stop();
+        oscRightRef.current?.stop();
+        if (lfoRef.current) {
+          try { lfoRef.current.stop(); lfoRef.current.disconnect(); } catch(e){}
+        }
+        if (lfoGainRef.current) lfoGainRef.current.disconnect();
+      }
+    };
+  }, []);
 
   return (
     <div className="fixed inset-0 flex items-center justify-center p-4 bg-black font-sans text-white">
