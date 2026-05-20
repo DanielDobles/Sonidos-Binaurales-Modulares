@@ -10,6 +10,7 @@
  * - Harmonic Locking: Ensures tonal consonance between synthetic and organic sources.
  * - Gain Staging: Professional mixing with logarithmic normalization to prevent clipping.
  * - Robust Fallback: Maintains audio integrity if sample assets are missing.
+ * - Proportional Volume: Natural quadratic response for better intensity control.
  */
 
 export type PulseType = 'sine' | 'square';
@@ -102,7 +103,7 @@ export class IsochronicModule {
     this.qGainNode.connect(this.filterNode.Q);
     
     this.modGainNode.gain.value = 0.0;
-    this.outputGainNode.gain.value = 0.25; // Safer default
+    this.outputGainNode.gain.value = 0.25; 
     this.qGainNode.gain.value = 10.0;
     
     this.updateGainStaging();
@@ -119,7 +120,6 @@ export class IsochronicModule {
    */
   public setIntensity(val: number, time: number = this.ctx.currentTime) {
     this._intensity = val;
-    // quadratic mapping for natural feel (log-like)
     const gain = val * val;
     this.outputGainNode.gain.setTargetAtTime(gain, time, 0.05);
   }
@@ -140,6 +140,20 @@ export class IsochronicModule {
       requestAnimationFrame(check);
     };
     if (this.isRunning) check();
+  }
+
+  /**
+   * Professional Gain Staging: Logarithmic normalization to prevent clipping.
+   */
+  private updateGainStaging(time: number = this.ctx.currentTime) {
+    const balance = this._mixBalance;
+    const carrierLevel = Math.cos(balance * 0.5 * Math.PI);
+    const sampleLevel = Math.sin(balance * 0.5 * Math.PI);
+    const total = carrierLevel + sampleLevel;
+    const norm = 1.0 / Math.max(1.0, total);
+
+    this.carrierGainNode.gain.setTargetAtTime(carrierLevel * norm, time, 0.05);
+    this.sampleGainNode.gain.setTargetAtTime(sampleLevel * norm, time, 0.05);
   }
 
   /**
@@ -181,9 +195,9 @@ export class IsochronicModule {
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       const arrayBuffer = await response.arrayBuffer();
       this.buffer = await this.ctx.decodeAudioData(arrayBuffer);
-      console.log("IsochronicModule: Sample assets loaded and verified.");
+      console.log("IsochronicModule: Sample assets loaded.");
     } catch (e) {
-      console.warn("IsochronicModule: Sample load failed. Falling back to synthetic synthesis.", e);
+      console.warn("IsochronicModule: Sample load failed. Falling back.", e);
       this.buffer = null;
     }
   }
@@ -234,34 +248,30 @@ export class IsochronicModule {
     this._resonanceCarrier = resonanceCarrier;
     this._pulseFreq = pulseFreq;
 
-    // 1. Sine Carrier (Entrainment Stability)
+    // 1. Sine Carrier
     this.carrierOsc = this.ctx.createOscillator();
     this.carrierOsc.type = 'sine';
     this.carrierOsc.frequency.setValueAtTime(this._resonanceCarrier, startTime);
     this.carrierOsc.connect(this.carrierGainNode);
 
-    // 2. Organic Sample (Texture & Transients)
+    // 2. Organic Sample
     if (this.buffer) {
         this.sampleSource = this.ctx.createBufferSource();
         this.sampleSource.buffer = this.buffer;
         this.sampleSource.loop = true;
         
-        const rate = this.calculateHarmonicLockedRate(this._pulseFreq);
+        const rate = this.calculateHarmonicRatio(this._pulseFreq);
         this.sampleSource.playbackRate.setValueAtTime(rate, startTime);
-        
-        // Connect to its gain node
         this.sampleSource.connect(this.sampleGainNode);
         
-        // Smooth fade-in to prevent clicks
         this.sampleGainNode.gain.setValueAtTime(0, startTime);
         this.updateGainStaging(startTime + 0.1);
     } else {
-        // Fallback: Maximize carrier if sample is missing
         this.carrierGainNode.gain.setTargetAtTime(1.0, startTime, 0.05);
         this.sampleGainNode.gain.setValueAtTime(0, startTime);
     }
 
-    // 3. Master LFO (Rhythmic Sync)
+    // 3. Master LFO
     this.lfoOsc = this.ctx.createOscillator();
     this.lfoOsc.type = 'triangle';
     this.lfoOsc.frequency.setValueAtTime(this._pulseFreq, startTime);
@@ -274,6 +284,7 @@ export class IsochronicModule {
 
     this.updateDensity(this._pulseFreq, startTime);
     this.isRunning = true;
+    this.startMonitor();
   }
 
   public stop(time: number = this.ctx.currentTime) {
@@ -298,16 +309,10 @@ export class IsochronicModule {
     this.filterNode.frequency.setTargetAtTime(freq, time, 0.05);
     this.carrierOsc?.frequency.setTargetAtTime(freq, time, 0.05);
     
-    // Recalculate harmonic pitch if running
     if (this.sampleSource && this.buffer) {
-        const rate = this.calculateHarmonicLockedRate(this._pulseFreq);
+        const rate = this.calculateHarmonicRatio(this._pulseFreq);
         this.sampleSource.playbackRate.setTargetAtTime(rate, time, 0.1);
     }
-  }
-
-  public setIntensity(val: number, time: number = this.ctx.currentTime) {
-    this._intensity = val;
-    this.outputGainNode.gain.setTargetAtTime(val, time, 0.05);
   }
 
   public setPulseType(type: PulseType) {
@@ -329,17 +334,11 @@ export class IsochronicModule {
     this._pulseFreq = freq;
     this.lfoOsc?.frequency.setTargetAtTime(freq, time, 0.05);
     if (this.sampleSource) {
-      const rate = this.calculateHarmonicLockedRate(freq);
-      this.sourceNodePlaybackRateRamp(rate, time);
+      const rate = this.calculateHarmonicRatio(freq);
+      this.sampleSource.playbackRate.linearRampToValueAtTime(rate, time + 0.2);
     }
     this.updateDensity(freq, time);
     this.regenerateCurve();
-  }
-
-  private sourceNodePlaybackRateRamp(rate: number, time: number) {
-    if (this.sampleSource) {
-        this.sampleSource.playbackRate.linearRampToValueAtTime(rate, time + 0.2);
-    }
   }
 
   // Legacy compatibility / Helper
