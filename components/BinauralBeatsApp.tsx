@@ -42,12 +42,12 @@ const PRESETS: WavePreset[] = [
 ];
 
 const SOLFEGGIO: SolfeggioPreset[] = [
-  { id: 'ut', name: '396 Hz', freq: 396, description: 'Liberar Culpa y Miedo' },
-  { id: 're', name: '417 Hz', freq: 417, description: 'Facilitar el Cambio' },
-  { id: 'mi', name: '528 Hz', freq: 528, description: 'Transformación y Milagros' },
-  { id: 'fa', name: '639 Hz', freq: 639, description: 'Conexión y Relaciones' },
-  { id: 'sol', name: '741 Hz', freq: 741, description: 'Despertar Intuición' },
-  { id: 'la', name: '852 Hz', freq: 852, description: 'Orden Espiritual' },
+  { id: 'ut', name: '396 Hz', freq: 396, description: 'Liberate Guilt and Fear' },
+  { id: 're', name: '417 Hz', freq: 417, description: 'Facilitate Change' },
+  { id: 'mi', name: '528 Hz', freq: 528, description: 'Transformation and Miracles' },
+  { id: 'fa', name: '639 Hz', freq: 639, description: 'Connection and Relationships' },
+  { id: 'sol', name: '741 Hz', freq: 741, description: 'Awaken Intuition' },
+  { id: 'la', name: '852 Hz', freq: 852, description: 'Spiritual Order' },
 ];
 
 /**
@@ -302,146 +302,243 @@ export default function BinauralBeatsApp() {
   }, []);
 
   return (
-    <Grainient className="fixed inset-0 flex items-center justify-center p-4">
-      {/* Dynamic Background Glow */}
-      <div 
-        className="absolute inset-0 opacity-20 transition-all duration-1000 pointer-events-none"
-        style={{ background: `radial-gradient(circle at 50% 50%, hsla(${baseHue}, 70%, 50%, 0.2), transparent 70%)` }}
-      />
-      
-      {/* 3D Waveform Layer */}
-      <div className="absolute inset-0 z-0 pointer-events-none">
-        <Canvas camera={{ position: [0, 0, 5], fov: 40 }}>
-          <AuroraWaveform 
-            isPlaying={isPlaying} 
-            analyserRef={analyserRef} 
-            baseHue={baseHue} 
-            activePresetData={currentPreset}
-            pulseTextRef={pulseTextRef}
-            oscRightRef={oscRightRef}
-            audioCtxRef={audioCtxRef}
-            carrierFreq={carrierFreq}
+    <div className="fixed inset-0 overflow-hidden bg-zinc-950">
+      {/* BACKDROP CANVAS: Ocupando el 100% del viewport */}
+      <div className="absolute inset-0 z-0">
+        <Grainient className="w-full h-full">
+          <div 
+            className="absolute inset-0 opacity-20 transition-all duration-1000 pointer-events-none"
+            style={{ background: `radial-gradient(circle at 50% 50%, hsla(${baseHue}, 70%, 50%, 0.2), transparent 70%)` }}
           />
-        </Canvas>
+          <div className="absolute inset-0 z-0 pointer-events-none">
+            <Canvas camera={{ position: [0, 0, 5], fov: 40 }}>
+              <AuroraWaveform 
+                isPlaying={isPlaying} 
+                analyserRef={analyserRef} 
+                baseHue={baseHue} 
+                activePresetData={currentPreset}
+                pulseTextRef={pulseTextRef}
+                oscRightRef={oscRightRef}
+                audioCtxRef={audioCtxRef}
+                carrierFreq={carrierFreq}
+              />
+            </Canvas>
+          </div>
+        </Grainient>
       </div>
 
-      <motion.div
-        initial={{ opacity: 0, scale: 1.45, y: 20 }}
-        animate={{ opacity: 1, scale: 1.5, y: 0 }}
-        transition={{ duration: 0.8, ease: "easeOut" }}
-        className="w-full max-w-xl aspect-square bg-zinc-950/60 backdrop-blur-3xl border border-white/10 rounded-[64px] p-10 z-10 flex flex-col justify-between relative shadow-[0_40px_120px_rgba(0,0,0,0.9)] origin-center"
-      >
-        {/* Internal Glow Decor */}
-        <div className="absolute inset-0 rounded-[64px] pointer-events-none" style={{ boxShadow: `inset 0 0 80px hsla(${baseHue}, 60%, 50%, 0.1)` }} />
+      {/* CENTRADO ABSOLUTO (Eje Macro) */}
+      <div className="fixed inset-0 flex items-center justify-center z-10 p-4 pointer-events-none">
+        <motion.div
+          initial={{ opacity: 0, y: 40, scale: 1.4 }}
+          animate={{ opacity: 1, y: 0, scale: 1.5 }}
+          transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
+          className="pointer-events-auto w-full max-w-[550px] bg-zinc-950/80 backdrop-blur-2xl border border-white/10 rounded-[42px] p-6 flex flex-col gap-4 relative shadow-[0_48px_100px_rgba(0,0,0,0.8)] origin-center"
+          style={{ 
+            // Proporción Áurea Aplicada a la Altura Estimada para Equilibrio Visual
+            // Width 550px -> Height target approx 890px for full Golden, but we use a modular scale for content.
+          }}
+        >
+          {/* Internal Glow Decor */}
+          <div className="absolute inset-0 rounded-[42px] pointer-events-none" style={{ boxShadow: `inset 0 0 60px hsla(${baseHue}, 60%, 50%, 0.05)` }} />
 
-        {/* Header Telemetry */}
-        <div className="flex justify-between items-start">
-          <div className="space-y-2">
-            <h2 className="text-xl font-bold uppercase tracking-[0.2em] text-white/90 leading-tight">
-              Neuro-Sync <br />
-              <span className="text-white/40">Engine</span>
-              <span className="text-[10px] opacity-30 ml-3 font-mono tracking-normal align-top">v1.0.0</span>
-            </h2>
-            <div className={cn("w-2.5 h-2.5 rounded-full", isPlaying ? "animate-pulse" : "opacity-20")} style={{ backgroundColor: `hsl(${baseHue}, 80%, 60%)`, boxShadow: isPlaying ? `0 0 15px hsl(${baseHue}, 80%, 60%)` : 'none' }} />
+          {/* Header Telemetry */}
+          <div className="flex justify-between items-center">
+            <div className="flex flex-col justify-center">
+              <h2 className="text-lg font-bold uppercase tracking-[0.25em] text-white/90 leading-none">
+                Neuro-Sync <span className="text-white/30 ml-1 font-light">Engine</span>
+              </h2>
+            </div>
+            {/* Refined Volume Control */}
+            <motion.div 
+              animate={{ opacity: isPlaying ? 1 : 0.4 }}
+              className="flex items-center gap-3 bg-white/[0.02] border border-white/5 px-4 py-2 rounded-2xl group transition-all duration-500 hover:border-white/10 h-10"
+            >
+              <Volume2 className="w-3.5 h-3.5 text-white/20 group-hover:text-white/40 transition-colors" />
+              <div className="relative w-24 h-1 flex items-center">
+                {/* Track Background */}
+                <div className="absolute inset-0 bg-white/10 rounded-full" />
+                {/* Dynamic Fill */}
+                <motion.div 
+                  className="absolute inset-y-0 left-0 rounded-full"
+                  animate={{ width: `${volume * 100}%` }}
+                  style={{ 
+                    background: `linear-gradient(90deg, hsla(${baseHue}, 70%, 50%, 0.4), hsla(${baseHue}, 100%, 60%, 1))`,
+                    boxShadow: isPlaying ? `0 0 10px hsla(${baseHue}, 100%, 60%, 0.2)` : 'none'
+                  }}
+                />
+                <input 
+                  type="range" min="0" max="1" step="0.05" value={volume} 
+                  onChange={(e) => setVolume(parseFloat(e.target.value))}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                />
+                {/* Custom Spring Thumb */}
+                <motion.div 
+                  className="absolute w-3 h-3 bg-white rounded-full shadow-[0_0_10px_rgba(255,255,255,0.4)] pointer-events-none"
+                  animate={{ left: `calc(${volume * 100}% - 6px)` }}
+                  transition={{ type: "spring", stiffness: 400, damping: 40 }}
+                />
+              </div>
+              <span className="text-[9px] font-mono text-white/30 w-7 text-right tabular-nums">{Math.round(volume * 100)}%</span>
+            </motion.div>
           </div>
-          <div className="flex flex-col items-end gap-4">
-            <div className="flex items-center gap-4 bg-white/[0.03] px-5 py-3 rounded-2xl border border-white/5 backdrop-blur-md">
-              <Volume2 className="w-4 h-4 text-white/20" />
-              <input 
-                type="range" min="0" max="1" step="0.01" value={volume} 
-                onChange={(e) => setVolume(parseFloat(e.target.value))}
-                className="w-20 accent-white/60 h-1 rounded-full appearance-none bg-white/10 cursor-pointer"
-              />
+
+          {/* LED Separator Line - Phi Geometry */}
+          <motion.div 
+            animate={{
+              backgroundImage: isPlaying 
+                ? `radial-gradient(ellipse 100% 100% at center, white 0%, hsla(${baseHue}, 100%, 70%, 1) 30%, hsla(${baseHue}, 80%, 40%, 0.5) 70%, transparent 100%)`
+                : `radial-gradient(ellipse 100% 100% at center, rgba(255,255,255,0.1) 0%, transparent 100%)`,
+              opacity: isPlaying ? 1 : 0.2,
+              boxShadow: isPlaying ? `0 0 20px hsla(${baseHue}, 80%, 50%, 0.3)` : 'none'
+            }}
+            className="w-full h-px bg-fixed"
+          />
+
+          {/* Solfeggio Carriers Grid - Phi Hierarchy 1 */}
+          <div className="space-y-3">
+            <div className="flex justify-center text-white/20">
+              <span className="text-[9px] font-bold uppercase tracking-[0.3em]">Resonance Carriers</span>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              {SOLFEGGIO.map((s) => (
+                <button
+                  key={s.id}
+                  onClick={() => changeSolfeggio(s.id)}
+                  className={cn(
+                    "relative flex flex-col items-center justify-center py-4 rounded-[20px] border transition-all duration-300 group overflow-hidden",
+                    activeSolfeggio === s.id 
+                      ? "border-white/20 bg-white/5 text-white" 
+                      : "border-white/5 bg-white/[0.02] text-white/30 hover:bg-white/[0.04]"
+                  )}
+                >
+                  <span className="text-xs font-mono font-medium">{s.name.split(' ')[0]}</span>
+                  <span className="text-[8px] opacity-40 uppercase tracking-tighter mt-1">{s.description.split(' ')[0]}</span>
+                  {activeSolfeggio === s.id && (
+                    <motion.div layoutId="solf-active" className="absolute inset-0 bg-white/[0.02] pointer-events-none" />
+                  )}
+                </button>
+              ))}
             </div>
           </div>
-        </div>
 
-        {/* Solfeggio Carriers Grid - Optimized for Square */}
-        <div className="space-y-4">
-          <div className="flex items-center gap-2 text-white/30">
-            <Music className="w-4 h-4" />
-            <span className="text-[10px] font-bold uppercase tracking-[0.3em]">Resonance</span>
-          </div>
-          <div className="grid grid-cols-3 gap-4">
-            {SOLFEGGIO.map((s) => (
+          {/* Brainwave Presets - Phi Hierarchy 2 (Smaller scale) */}
+          <div className="grid grid-cols-5 gap-2">
+            {PRESETS.map((p) => (
               <button
-                key={s.id}
-                onClick={() => changeSolfeggio(s.id)}
+                key={p.id}
+                onClick={() => changePreset(p)}
                 className={cn(
-                  "relative flex flex-col items-center justify-center aspect-square p-2 rounded-[24px] border transition-all duration-400 overflow-hidden group",
-                  activeSolfeggio === s.id 
-                    ? "border-white/20 bg-white/5 text-white shadow-[0_8px_32px_rgba(0,0,0,0.4)]" 
-                    : "border-white/5 bg-white/[0.01] text-white/30 hover:bg-white/[0.04]"
+                  "flex flex-col items-center justify-center py-3 rounded-[16px] border transition-all duration-500",
+                  activePreset === p.id 
+                    ? "border-white/20 bg-white/10 text-white" 
+                    : "border-white/5 bg-white/[0.01] text-white/20 hover:text-white/40"
                 )}
               >
-                <span className="text-xs font-bold font-mono">{s.name.split(' ')[0]}</span>
-                <span className="text-[7px] opacity-40 uppercase tracking-tighter mt-1 block truncate w-full text-center px-1 font-medium">
-                  {s.description.split(' ')[0]}
-                </span>
-                {activeSolfeggio === s.id && (
-                  <motion.div layoutId="solf-glow" className="absolute inset-0 bg-white/[0.03] pointer-events-none" />
-                )}
+                <div className={cn("transition-transform duration-700", activePreset === p.id ? "scale-110" : "scale-90 opacity-40")}>
+                  {React.cloneElement(p.icon as React.ReactElement, { className: "w-3.5 h-3.5" })}
+                </div>
+                <span className="text-[7px] font-bold mt-1.5 uppercase tracking-widest">{p.name}</span>
               </button>
             ))}
           </div>
-        </div>
 
-        {/* Brainwave Presets - Compact for Square */}
-        <div className="grid grid-cols-5 gap-3">
-          {PRESETS.map((p) => (
-            <button
-              key={p.id}
-              onClick={() => changePreset(p)}
+          {/* Main Controls & Telemetry - Phi Scaling 1:1.618 */}
+          <div className="flex justify-between items-center gap-4 mt-2">
+            {/* Left Telemetry: Scaled by 1/1.618 approx */}
+            <div className="flex-1 bg-white/[0.02] py-4 rounded-[24px] border border-white/5 flex flex-col items-center gap-1">
+              <span className="text-[7px] text-white/20 uppercase font-bold tracking-[0.2em]">Carrier</span>
+              <div className="text-lg font-mono font-light text-white/80 tabular-nums">
+                {carrierFreq}<span className="text-[9px] ml-0.5 opacity-20">Hz</span>
+              </div>
+            </div>
+
+            {/* Central Interaction: Phi Anchor */}
+            <button 
+              onClick={toggleSound} 
+              className="w-20 h-20 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 flex items-center justify-center transition-all duration-700 shadow-[0_0_40px_rgba(0,0,0,0.5)] relative group overflow-hidden shrink-0"
+            >
+              <div className="absolute inset-0 rounded-full blur-2xl opacity-0 group-hover:opacity-20 transition-opacity duration-700" style={{ background: `hsl(${baseHue}, 80%, 50%)` }} />
+              {isPlaying ? (
+                <Pause className="w-8 h-8 text-white/90 fill-white/5" />
+              ) : (
+                <Play className="w-8 h-8 text-white/90 translate-x-0.5 fill-white/5" />
+              )}
+            </button>
+
+            {/* Right Telemetry: Scaled by 1/1.618 approx */}
+            <div className="flex-1 bg-white/[0.02] py-4 rounded-[24px] border border-white/5 flex flex-col items-center gap-1">
+              <span className="text-[7px] text-white/20 uppercase font-bold tracking-[0.2em]">Binaural</span>
+              <div className="text-lg font-mono font-medium text-white/80 tabular-nums">
+                <span ref={pulseTextRef}>{currentPreset.beatFreq.toFixed(2)}</span>
+                <span className="text-[9px] ml-0.5 opacity-20">Hz</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Footer - Unified LED Unit */}
+          <div className="pt-4 border-t border-white/5 flex flex-col items-center">
+            <motion.div 
+              initial={false}
+              animate={{ 
+                opacity: isPlaying ? 1 : 0.4,
+              }}
               className={cn(
-                "flex flex-col items-center justify-center py-4 rounded-[20px] border transition-all duration-500",
-                activePreset === p.id 
-                  ? "border-white/20 bg-white/10 text-white" 
-                  : "border-white/5 bg-white/[0.01] text-white/20 hover:text-white/40"
+                "flex flex-col items-center group/footer",
+                isPlaying && "animate-pulse duration-[3000ms]"
               )}
             >
-              <div className={cn("transition-transform duration-700", activePreset === p.id ? "scale-110" : "opacity-60")}>
-                {p.icon}
+              {/* Unified Text Group */}
+              <div className="flex items-center gap-2">
+                <span 
+                  className="text-[8px] font-mono font-light tracking-[0.5em] uppercase bg-clip-text text-transparent bg-fixed"
+                  style={{ 
+                    backgroundImage: isPlaying 
+                      ? `radial-gradient(ellipse 160% 100% at center, hsla(${baseHue}, 100%, 80%, 0.8) 0%, hsla(${baseHue}, 80%, 40%, 0.4) 60%, transparent 100%)`
+                      : `radial-gradient(ellipse 160% 100% at center, rgba(255,255,255,0.1) 0%, transparent 100%)`
+                  }}
+                >
+                  Developed by
+                </span>
+                <span 
+                  className="text-[8px] font-mono font-light tracking-[0.5em] uppercase bg-clip-text text-transparent bg-fixed"
+                  style={{ 
+                    backgroundImage: isPlaying 
+                      ? `radial-gradient(ellipse 160% 100% at center, white 0%, hsla(${baseHue}, 100%, 80%, 1) 30%, hsla(${baseHue}, 80%, 50%, 0.6) 70%, transparent 100%)`
+                      : `radial-gradient(ellipse 160% 100% at center, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0.05) 80%, transparent 100%)`,
+                    textShadow: isPlaying ? `0 0 15px hsla(${baseHue}, 90%, 60%, 0.2)` : 'none'
+                  }}
+                >
+                  Daniel Dobles
+                </span>
               </div>
-              <span className="text-[8px] font-bold mt-2 uppercase tracking-widest">{p.name}</span>
-            </button>
-          ))}
-        </div>
 
-        {/* Main Controls & Telemetry */}
-        <div className="flex justify-between items-center gap-6">
-          <div className="flex-1 bg-white/[0.02] p-5 rounded-[32px] border border-white/5 flex flex-col items-center gap-2">
-            <span className="text-[8px] text-white/20 uppercase font-bold tracking-[0.2em]">Carrier</span>
-            <div className="text-xl font-mono font-light text-white/90 tabular-nums">
-              {carrierFreq}<span className="text-[10px] ml-1 opacity-20">Hz</span>
-            </div>
+              {/* Central Light Slit (Separator) */}
+              <div 
+                className="w-48 h-px bg-fixed my-2 transition-all duration-1000"
+                style={{ 
+                  backgroundImage: isPlaying 
+                    ? `radial-gradient(ellipse 100% 100% at center, white 0%, hsla(${baseHue}, 100%, 70%, 0.8) 40%, hsla(${baseHue}, 80%, 40%, 0.4) 80%, transparent 100%)`
+                    : `radial-gradient(ellipse 100% 100% at center, rgba(255,255,255,0.1) 0%, transparent 100%)`,
+                  boxShadow: isPlaying ? `0 0 15px hsla(${baseHue}, 100%, 60%, 0.1)` : 'none'
+                }}
+              />
+
+              {/* Bottom Text Slit */}
+              <span 
+                className="text-[8px] font-mono font-light tracking-[0.5em] uppercase bg-clip-text text-transparent bg-fixed"
+                style={{ 
+                  backgroundImage: isPlaying 
+                    ? `radial-gradient(ellipse 160% 100% at center, hsla(${baseHue}, 100%, 80%, 0.8) 0%, hsla(${baseHue}, 80%, 50%, 0.4) 70%, transparent 100%)`
+                    : `radial-gradient(ellipse 160% 100% at center, rgba(255,255,255,0.1) 0%, transparent 100%)`
+                }}
+              >
+                Sound Engineering
+              </span>
+            </motion.div>
           </div>
-
-          <button 
-            onClick={toggleSound} 
-            className="w-24 h-24 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 flex items-center justify-center transition-all duration-700 shadow-[0_0_50px_rgba(0,0,0,0.5)] relative group overflow-hidden shrink-0"
-          >
-            <div className="absolute inset-0 rounded-full blur-3xl opacity-0 group-hover:opacity-30 transition-opacity duration-700" style={{ background: `hsl(${baseHue}, 80%, 50%)` }} />
-            {isPlaying ? (
-              <Pause className="w-10 h-10 text-white/90 fill-white/5" />
-            ) : (
-              <Play className="w-10 h-10 text-white/90 translate-x-1 fill-white/5" />
-            )}
-          </button>
-
-          <div className="flex-1 bg-white/[0.02] p-5 rounded-[32px] border border-white/5 flex flex-col items-center gap-2">
-            <span className="text-[8px] text-white/20 uppercase font-bold tracking-[0.2em]">Binaural</span>
-            <div className="text-xl font-mono font-medium text-white/90 tabular-nums">
-              <span ref={pulseTextRef}>{currentPreset.beatFreq.toFixed(2)}</span>
-              <span className="text-[10px] ml-1 opacity-20">Hz</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Creator Footer */}
-        <div className="pt-6 border-t border-white/5 flex flex-col items-center gap-2 opacity-30 hover:opacity-70 transition-opacity duration-700">
-          <span className="text-xs font-bold tracking-[0.3em] uppercase text-white/70">Daniel Dobles</span>
-        </div>
-      </motion.div>
-    </Grainient>
+        </motion.div>
+      </div>
+    </div>
   );
 }
