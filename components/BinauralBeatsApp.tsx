@@ -52,17 +52,27 @@ const SOLFEGGIO: SolfeggioPreset[] = [
 ];
 
 /**
- * OPTIMIZED GRAINIENT COMPONENT (SVG FILTER)
- * Prevents GPU degradation and visual artifacts with calibrated turbulence.
+ * PSYCHOACOUSTIC UTILS: Fletcher-Munson (ISO 226:2003) Approximation
+ * Maps frequency (Hz) to a gain correction factor for constant perceived loudness.
+ */
+function getFletcherMunsonGain(freq: number): number {
+  if (freq < 800) return 1.0; 
+  if (freq >= 1000 && freq < 4000) return 0.7; 
+  if (freq >= 5000 && freq <= 8000) return 0.9;
+  return 1.0;
+}
+
+/**
+ * OPTIMIZED STATIC GRAINIENT COMPONENT
  */
 const Grainient = ({ children, className }: { children?: React.ReactNode, className?: string }) => (
   <div className={cn("relative w-full h-full overflow-hidden bg-zinc-950", className)}>
-    <div 
-      className="absolute inset-0 z-0 opacity-[0.15] mix-blend-overlay pointer-events-none" 
-      style={{ 
-        backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 250 250' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")` 
-      }} 
-    />
+    <svg className="absolute inset-0 w-full h-full opacity-[0.08] pointer-events-none" xmlns="http://www.w3.org/2000/svg">
+      <filter id="noiseFilter">
+        <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="2" stitchTiles="stitch" />
+      </filter>
+      <rect width="100%" height="100%" filter="url(%23noiseFilter)" />
+    </svg>
     {children}
   </div>
 );
@@ -202,6 +212,26 @@ function AuroraWaveform({
 }
 
 /**
+ * PSYCHOACOUSTIC UTILS: A-Weighting (dBA) approximation
+ * Maps frequency (Hz) to a gain correction factor to normalize perceived loudness.
+ */
+function getWeightingGain(f: number): number {
+  if (f <= 0) return 1.0;
+  // A-weighting approximation curve
+  const f2 = f * f;
+  const f4 = f2 * f2;
+  const numerator = Math.pow(12194, 2) * f4;
+  const denominator = (f2 + Math.pow(20.6, 2)) * 
+                      Math.sqrt((f2 + Math.pow(107.7, 2)) * (f2 + Math.pow(737.9, 2))) * 
+                      (f2 + Math.pow(12194, 2));
+  
+  // Calculate dB relative to 1kHz (normalization)
+  const dB = 20 * Math.log10(numerator / denominator) + 2.0;
+  // Convert dB to linear gain
+  return Math.pow(10, dB / 20);
+}
+
+/**
  * MAIN APP COMPONENT
  */
 export default function BinauralBeatsApp() {
@@ -224,12 +254,20 @@ export default function BinauralBeatsApp() {
   const carrierFreq = currentSolfeggio.freq;
   const baseHue = ((carrierFreq - 396) / (852 - 396)) * 280;
 
-  // Volume modulation with setTargetAtTime
+// Psychoacoustic Compensation
+  const fletcherGain = useMemo(() => getFletcherMunsonGain(carrierFreq), [carrierFreq]);
+
+  // Volume & Compensation modulation
   useEffect(() => {
     if (masterGainRef.current && audioCtxRef.current) {
-      masterGainRef.current.gain.setTargetAtTime(volume, audioCtxRef.current.currentTime, 0.05);
+      const targetGain = volume * fletcherGain;
+      masterGainRef.current.gain.cancelScheduledValues(audioCtxRef.current.currentTime);
+      masterGainRef.current.gain.exponentialRampToValueAtTime(
+        Math.max(targetGain, 0.001), 
+        audioCtxRef.current.currentTime + 0.5
+      );
     }
-  }, [volume]);
+  }, [volume, fletcherGain]);
 
   const initAudio = async () => {
     if (!audioCtxRef.current) {
@@ -273,10 +311,13 @@ export default function BinauralBeatsApp() {
       oL.connect(pL).connect(anal).connect(masterGainRef.current!);
       oR.connect(pR).connect(masterGainRef.current!);
 
-      // Cinematic Fade-In: 2.5 seconds linear ramp
+      // Cinematic Fade-In: 2.5 seconds exponential ramp
       masterGainRef.current!.gain.cancelScheduledValues(ctx.currentTime);
-      masterGainRef.current!.gain.setValueAtTime(0, ctx.currentTime);
-      masterGainRef.current!.gain.linearRampToValueAtTime(volume, ctx.currentTime + 2.5);
+      masterGainRef.current!.gain.setValueAtTime(0.001, ctx.currentTime);
+      masterGainRef.current!.gain.exponentialRampToValueAtTime(
+        Math.max(volume * fletcherGain, 0.001), 
+        ctx.currentTime + 2.5
+      );
 
       oL.start(); oR.start();
       oscLeftRef.current = oL;
@@ -532,6 +573,7 @@ export default function BinauralBeatsApp() {
                   <div className="text-lg font-mono font-light text-white/80 tabular-nums">
                     {carrierFreq}<span className="text-[9px] ml-0.5 opacity-20">Hz</span>
                   </div>
+                  <span className="text-[7px] text-white/20 uppercase font-bold tracking-[0.2em]">Comp: {(20 * Math.log10(fletcherGain)).toFixed(1)}dB</span>
                 </div>
 
                 {/* Central Interaction: Phi Anchor */}
