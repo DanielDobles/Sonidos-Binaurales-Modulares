@@ -12,7 +12,7 @@ function cn(...inputs: ClassValue[]) { return twMerge(clsx(inputs)); }
 
 interface WavePreset { id: string; name: string; range: string; beatFreq: number; carrierFreq: number; icon: React.ReactNode; }
 
-// --- TRUE GLSL WAVE DISTORTION SHADER ---
+// --- PRECISION OSCILLOSCOPE SHADER COMPONENT ---
 function AuroraWaveform({ 
   isPlaying, 
   analyserRef, 
@@ -31,13 +31,16 @@ function AuroraWaveform({
   const meshRef = useRef<THREE.Mesh>(null!);
   const materialRef = useRef<THREE.ShaderMaterial>(null!);
   
-  // We use a DataTexture to pass the audio array directly to the GPU
-  const dataArray = useMemo(() => new Uint8Array(256), []);
+  // High-density data buffer for normalization
+  const byteDataArray = useMemo(() => new Uint8Array(256), []);
+  const floatDataArray = useMemo(() => new Float32Array(256), []);
+  
+  // Using RedFormat with FloatType for precise -1.0 to 1.0 mapping
   const audioTexture = useMemo(() => {
-    const tex = new THREE.DataTexture(dataArray, 256, 1, THREE.RedFormat);
+    const tex = new THREE.DataTexture(floatDataArray, 256, 1, THREE.RedFormat, THREE.FloatType);
     tex.needsUpdate = true;
     return tex;
-  }, [dataArray]);
+  }, [floatDataArray]);
 
   const uniforms = useMemo(() => ({
     uTime: { value: 0 },
@@ -58,9 +61,11 @@ function AuroraWaveform({
       materialRef.current.uniforms.uIsPlaying.value = isPlaying ? 1.0 : 0.0;
 
       if (isPlaying && analyserRef.current) {
-        // Read raw audio data
-        analyserRef.current.getByteTimeDomainData(dataArray);
-        // Tell GPU the texture data has changed
+        analyserRef.current.getByteTimeDomainData(byteDataArray);
+        // Scientific Normalization: byte 128 -> 0.0, byte 255 -> 1.0, byte 0 -> -1.0
+        for (let i = 0; i < 256; i++) {
+          floatDataArray[i] = (byteDataArray[i] - 128) / 128.0;
+        }
         materialRef.current.uniforms.uAudioBuffer.value.needsUpdate = true;
       }
     }
@@ -68,15 +73,12 @@ function AuroraWaveform({
     // High-Frequency Pulse Telemetry (60 FPS DOM Injection)
     if (isPlaying && pulseTextRef.current) {
       const elapsed = (Date.now() - startTimeRef.current) / 1000;
-      const lfoModulation = Math.sin(elapsed * Math.PI * 2 * 0.04) * 0.3;
-      const currentPulse = binauralBeatFreq + lfoModulation;
+      const currentPulse = binauralBeatFreq + (Math.sin(elapsed * Math.PI * 2 * 0.04) * 0.3);
       pulseTextRef.current.textContent = currentPulse.toFixed(1) + " Hz";
     }
 
-    // Subtle gentle breath of the whole mesh
     if (meshRef.current) {
-      meshRef.current.rotation.z = Math.sin(time * 0.1) * 0.02;
-      meshRef.current.rotation.x = -Math.PI / 8 + Math.sin(time * 0.05) * 0.05;
+      meshRef.current.rotation.z = Math.sin(time * 0.1) * 0.01;
     }
   });
 
@@ -88,52 +90,26 @@ function AuroraWaveform({
       uniform float uIsPlaying;
       uniform sampler2D uAudioBuffer;
       
-      // Simplex noise function for organic gaseous distortion
-      vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
-      vec2 mod289(vec2 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
-      vec3 permute(vec3 x) { return mod289(((x*34.0)+1.0)*x); }
-      float snoise(vec2 v) {
-        const vec4 C = vec4(0.211324865405187, 0.366025403784439, -0.577350269189626, 0.024390243902439);
-        vec2 i  = floor(v + dot(v, C.yy) );
-        vec2 x0 = v -   i + dot(i, C.xx);
-        vec2 i1; i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
-        vec4 x12 = x0.xyxy + C.xxzz;
-        x12.xy -= i1;
-        i = mod289(i);
-        vec3 p = permute( permute( i.y + vec3(0.0, i1.y, 1.0 )) + i.x + vec3(0.0, i1.x, 1.0 ));
-        vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0);
-        m = m*m ; m = m*m ;
-        vec3 x = 2.0 * fract(p * C.www) - 1.0;
-        vec3 h = abs(x) - 0.5;
-        vec3 ox = floor(x + 0.5);
-        vec3 a0 = x - ox;
-        m *= 1.79284291400159 - 0.85373472095314 * ( a0*a0 + h*h );
-        vec3 g;
-        g.x  = a0.x  * x0.x  + h.x  * x0.y;
-        g.yz = a0.yz * x12.xz + h.yz * x12.yw;
-        return 130.0 * dot(m, g);
-      }
-      
       void main() {
         vUv = uv;
         vec3 pos = position;
         
-        // Read raw audio displacement from the DataTexture
-        // r channel holds the 0-255 byte value. Subtract 0.5 (128/255) to center at 0.
-        float audioData = texture2D(uAudioBuffer, vec2(vUv.x, 0.5)).r - 0.5;
+        // Read scientific normalized data (-1.0 to 1.0)
+        float audioData = texture2D(uAudioBuffer, vec2(vUv.x, 0.5)).r;
         
-        // Physical binding: Distort Y and Z based on real audio data
-        float rawDisplacement = audioData * 8.0 * uIsPlaying;
+        // Locked Oscilloscope Displacement
+        float amplitudeScale = mix(0.1, 2.5, uIsPlaying);
+        float displacement = audioData * amplitudeScale;
         
-        // Add organic Simplex noise to mimic Soft Aurora gaseousness
-        float noise = snoise(vec2(pos.x * 0.5 + uTime * 0.2, pos.y * 0.5 - uTime * 0.3)) * 0.5;
+        // Latent wave for idle state
+        float idleWave = sin(pos.x * 2.0 + uTime * 2.0) * 0.1;
         
-        // Add a mathematical pulse representing the Binaural Beat frequency
-        float beatPulse = sin(pos.x * 2.0 + uTime * uFrequency * 0.2) * 0.4;
+        // Apply displacement and clamp strictly to center bounds
+        pos.y += mix(idleWave, displacement, uIsPlaying);
+        pos.y = clamp(pos.y, -2.0, 2.0);
         
-        // Blend raw audio with gaseous noise and the beat pulse
-        pos.z += rawDisplacement + noise + beatPulse;
-        pos.y += (rawDisplacement * 0.5) + noise * 0.5;
+        // Subtle depth for Aurora feel
+        pos.z += displacement * 0.5;
         
         gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
       }
@@ -145,26 +121,21 @@ function AuroraWaveform({
       uniform float uIsPlaying;
 
       void main() {
-        // High-end Soft Aurora fading: intense center, fully transparent edges
-        float edgeY = smoothstep(0.0, 0.4, vUv.y) * smoothstep(1.0, 0.6, vUv.y);
-        float edgeX = smoothstep(0.0, 0.2, vUv.x) * smoothstep(1.0, 0.8, vUv.x);
-        float alphaMask = edgeY * edgeX;
+        // High-precision Soft Aurora masking
+        float edgeY = smoothstep(0.0, 0.5, vUv.y) * smoothstep(1.0, 0.5, vUv.y);
+        float edgeX = smoothstep(0.0, 0.1, vUv.x) * smoothstep(1.0, 0.9, vUv.x);
+        float glow = sin(vUv.x * 20.0 + uTime * 2.0) * 0.5 + 0.5;
         
-        // Add moving plasma glow across the X axis
-        float glow = sin(vUv.x * 10.0 + uTime * 1.5) * 0.5 + 0.5;
-        vec3 finalColor = mix(uColor, vec3(1.0, 1.0, 1.0), glow * 0.3);
+        vec3 finalColor = mix(uColor, vec3(1.0), glow * 0.15);
+        float alpha = edgeY * edgeX * mix(0.2, 0.7, uIsPlaying);
         
-        // Base opacity drops when not playing
-        float baseOpacity = mix(0.1, 0.6, uIsPlaying);
-        
-        gl_FragColor = vec4(finalColor, alphaMask * baseOpacity * (glow + 0.5));
+        gl_FragColor = vec4(finalColor, alpha);
       }
     `
   }), []);
 
   return (
-    <mesh ref={meshRef} position={[0, 0, 0]} rotation={[-Math.PI / 8, 0, 0]}>
-      {/* Dense subdivision for high-fidelity vertex distortion */}
+    <mesh ref={meshRef} position={[0, 0, 0]} rotation={[-Math.PI / 12, 0, 0]}>
       <planeGeometry args={[14, 4, 256, 32]} />
       <shaderMaterial
         ref={materialRef}
@@ -179,7 +150,6 @@ function AuroraWaveform({
   );
 }
 
-// --- MAIN BINAURAL APPLICATION ---
 export default function BinauralBeatsApp() {
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [carrierFreq, setCarrierFreq] = useState<number>(180);
@@ -204,7 +174,6 @@ export default function BinauralBeatsApp() {
     { id: 'gamma', name: 'Gamma', range: '30-45Hz', beatFreq: 38.0, carrierFreq: 260, icon: <Brain className="w-4 h-4" /> },
   ];
 
-  // Physical Chromatic Mapping: 100Hz (Low) -> Red (0) | 350Hz (High) -> Violet (280)
   const carrierRatio = Math.max(0, Math.min(1, (carrierFreq - 100) / 250));
   const baseHue = carrierRatio * 280;
 
@@ -245,12 +214,10 @@ export default function BinauralBeatsApp() {
       
       const lfo = ctx.createOscillator();
       const lfoGain = ctx.createGain();
-      lfo.frequency.value = 0.04; // 25s hardware-accelerated cycle
-      lfoGain.gain.value = 0.3;    // ±0.3Hz micro-modulation
+      lfo.frequency.value = 0.04;
+      lfoGain.gain.value = 0.3;
       
       aL.fftSize = 256; pL.pan.value = -1; pR.pan.value = 1;
-      
-      // Fix 440Hz jump
       oL.frequency.setValueAtTime(carrierFreq, ctx.currentTime);
       oR.frequency.setValueAtTime(carrierFreq + binauralBeatFreq, ctx.currentTime);
       
@@ -278,13 +245,11 @@ export default function BinauralBeatsApp() {
 
   return (
     <div className="fixed inset-0 flex items-center justify-center p-4 bg-[#050505] font-sans text-white overflow-hidden">
-      {/* Background Chromatic Depth */}
       <div 
         className="absolute inset-0 opacity-20 transition-all duration-1000 pointer-events-none"
         style={{ background: `radial-gradient(circle at 50% 50%, hsla(${baseHue}, 70%, 50%, 0.15), transparent 70%)` }}
       />
       
-      {/* --- REACT THREE FIBER INTERACTIVE CANVAS --- */}
       <div className="absolute inset-0 z-0 pointer-events-none">
         <Canvas camera={{ position: [0, 0, 6], fov: 40 }}>
           <ambientLight intensity={0.4} />
@@ -299,26 +264,21 @@ export default function BinauralBeatsApp() {
         </Canvas>
       </div>
       
-      {/* --- GLASSMORPHIC DASHBOARD UI --- */}
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         className="w-full max-w-lg bg-zinc-950/40 backdrop-blur-2xl border border-white/10 shadow-[0_0_80px_rgba(0,0,0,0.9)] rounded-[32px] p-8 z-10 flex flex-col gap-8 relative overflow-hidden"
       >
-        <div 
-          className="absolute inset-0 border border-white/5 rounded-[32px] pointer-events-none"
-          style={{ boxShadow: `inset 0 0 25px hsla(${baseHue}, 70%, 50%, 0.05)` }}
-        />
+        <div className="absolute inset-0 border border-white/5 rounded-[32px] pointer-events-none" style={{ boxShadow: `inset 0 0 25px hsla(${baseHue}, 70%, 50%, 0.05)` }} />
 
         <div className="text-center space-y-1">
           <h2 className="text-[10px] font-bold uppercase tracking-[0.4em] text-white/20">Psychoacoustic Processor</h2>
           <div className="flex items-center justify-center gap-3">
             <span className="h-1.5 w-1.5 rounded-full animate-pulse" style={{ background: `hsl(${baseHue}, 80%, 60%)` }} />
-            <h1 className="text-sm font-semibold text-white/70 uppercase tracking-widest">Spatial Aurora Engine</h1>
+            <h1 className="text-sm font-semibold text-white/70 uppercase tracking-widest">Precision Oscilloscope</h1>
           </div>
         </div>
 
-        {/* Adaptive Wave Preset Grid */}
         <div className="grid grid-cols-5 gap-3 w-full">
           {presets.map((p) => {
             const pHue = ((p.carrierFreq - 100) / 250) * 280;
@@ -332,14 +292,9 @@ export default function BinauralBeatsApp() {
                   backgroundColor: isActive ? `hsla(${pHue}, 70%, 50%, 0.08)` : 'rgba(255,255,255,0.02)',
                   color: isActive ? `hsla(${pHue}, 80%, 70%, 1)` : '#94a3b8'
                 }}
-                className={cn(
-                  "flex flex-col items-center justify-center p-3 rounded-2xl border transition-all duration-500",
-                  isActive ? "shadow-[inset_0_0_15px_rgba(255,255,255,0.01)]" : "hover:border-white/20"
-                )}
+                className={cn("flex flex-col items-center justify-center p-3 rounded-2xl border transition-all duration-500", isActive && "shadow-[inset_0_0_15px_rgba(255,255,255,0.01)]")}
               >
-                <div className={cn("transition-transform duration-300", isActive && "scale-110")}>
-                  {p.icon}
-                </div>
+                <div className={cn("transition-transform duration-300", isActive && "scale-110")}>{p.icon}</div>
                 <span className="block text-[10px] font-bold mt-2 uppercase tracking-tighter">{p.name}</span>
                 <span className="block font-mono text-[8px] opacity-40 mt-0.5">{p.range}</span>
               </button>
@@ -347,37 +302,21 @@ export default function BinauralBeatsApp() {
           })}
         </div>
 
-        {/* Dynamic Playback Control */}
         <div className="flex justify-center relative">
-          <div 
-            className="absolute inset-0 blur-[50px] rounded-full opacity-20 transition-all duration-700"
-            style={{ background: `hsl(${baseHue}, 80%, 50%)` }}
-          />
-          <button
-            onClick={runSoundEngine}
-            className="relative w-20 h-20 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 flex items-center justify-center transition-all duration-300 shadow-2xl group"
-          >
-            {isPlaying ? (
-              <Pause className="w-8 h-8 text-white/90 group-active:scale-90 transition-transform" />
-            ) : (
-              <Play className="w-8 h-8 text-white/90 translate-x-0.5 group-active:scale-90 transition-transform" />
-            )}
+          <div className="absolute inset-0 blur-[50px] rounded-full opacity-20 transition-all duration-700" style={{ background: `hsl(${baseHue}, 80%, 50%)` }} />
+          <button onClick={runSoundEngine} className="relative w-20 h-20 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 flex items-center justify-center transition-all duration-300 shadow-2xl group">
+            {isPlaying ? <Pause className="w-8 h-8 text-white/90" /> : <Play className="w-8 h-8 text-white/90 translate-x-0.5" />}
           </button>
         </div>
 
-        {/* Clinical Telemetry Stats */}
         <div className="grid grid-cols-2 gap-4">
           <div className="bg-white/[0.03] p-4 rounded-2xl border border-white/5 flex flex-col items-center">
-            <span className="text-[8px] text-white/20 uppercase tracking-[0.2em] font-bold mb-1">Carrier Frequency</span>
-            <div className="font-mono text-base font-medium text-white/80 tabular-nums">
-              {carrierFreq}<span className="text-[10px] ml-1 opacity-30">Hz</span>
-            </div>
+            <span className="text-[8px] text-white/20 uppercase tracking-[0.2em] font-bold mb-1">Carrier State</span>
+            <div className="font-mono text-base font-medium text-white/80 tabular-nums">{carrierFreq}<span className="text-[10px] ml-1 opacity-30">Hz</span></div>
           </div>
           <div className="bg-white/[0.03] p-4 rounded-2xl border border-white/5 flex flex-col items-center">
             <span className="text-[8px] text-white/20 uppercase tracking-[0.2em] font-bold mb-1">Pulse Resonance</span>
-            <div className="font-mono text-base font-medium text-white/80 tabular-nums">
-              <span ref={pulseTextRef}>{binauralBeatFreq.toFixed(1)} Hz</span>
-            </div>
+            <div className="font-mono text-base font-medium text-white/80 tabular-nums"><span ref={pulseTextRef}>{binauralBeatFreq.toFixed(1)} Hz</span></div>
           </div>
         </div>
       </motion.div>
