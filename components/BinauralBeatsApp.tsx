@@ -442,6 +442,16 @@ export default function BinauralBeatsApp() {
             </div>
           </div>
         </div>
+
+        {/* Creator Footer */}
+        <div className="mt-2 pt-4 border-t border-white/5 flex flex-col items-center gap-1 opacity-40 hover:opacity-80 transition-opacity duration-500">
+          <div className="flex items-center gap-2">
+            <div className="h-px w-4 bg-white/20" />
+            <span className="text-[7px] uppercase tracking-[0.4em] font-medium text-white/60">Architect & Audio Engineer</span>
+            <div className="h-px w-4 bg-white/20" />
+          </div>
+          <span className="text-[10px] font-bold tracking-widest uppercase text-white/80">Daniel Dobles</span>
+        </div>
       </motion.div>
     </Grainient>
   );
