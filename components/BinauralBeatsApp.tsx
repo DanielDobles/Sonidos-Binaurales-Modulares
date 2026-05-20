@@ -307,7 +307,7 @@ export default function BinauralBeatsApp() {
         now + 1.2 // Smooth 1.2s ramp to prevent auditory roughness/clicks during transition
       );
     }
-  }, [carrierFreq]);
+  }, [carrierFreq, volume, fletcherGain]);
 
   // 2. Volume ramp: Triggers exclusively when manual volume changes
   useEffect(() => {
@@ -332,7 +332,7 @@ export default function BinauralBeatsApp() {
     }
   }, [isoIntensity, isIsoEnabled]);
 
-  const initAudio = async () => {
+  const initAudio = useCallback(async () => {
     if (!audioCtxRef.current) {
       audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
     }
@@ -344,10 +344,20 @@ export default function BinauralBeatsApp() {
       masterGainRef.current.gain.setValueAtTime(0, ctx.currentTime);
       masterGainRef.current.connect(ctx.destination);
     }
-    return ctx;
-  };
 
-  const toggleSound = async () => {
+    if (!isochronicModuleRef.current) {
+      isochronicModuleRef.current = new IsochronicModule(ctx);
+      // Wait for the analyser to be created in toggleSound or create it here
+      // To be safe, we'll connect it when toggleSound runs or here if anal exists
+      if (analyserRef.current) {
+        isochronicModuleRef.current.connect(analyserRef.current);
+      }
+    }
+
+    return ctx;
+  }, []);
+
+  const toggleSound = useCallback(async () => {
     if (isPlaying) {
       oscLeftRef.current?.stop();
       oscLeftRef.current = null;
@@ -360,10 +370,15 @@ export default function BinauralBeatsApp() {
       const ctx = await initAudio();
       const startTime = ctx.currentTime + 0.1; // Master Clock for phase sync
       
-      const anal = analyserRef.current || ctx.createAnalyser();
-      anal.fftSize = 256;
-      analyserRef.current = anal;
-      anal.connect(masterGainRef.current!);
+      if (!analyserRef.current) {
+        const anal = ctx.createAnalyser();
+        anal.fftSize = 256;
+        analyserRef.current = anal;
+        anal.connect(masterGainRef.current!);
+      }
+      
+      // Ensure isochronic module is connected to analyser
+      isochronicModuleRef.current?.connect(analyserRef.current!);
 
       // Binaural Layer
       const oL = ctx.createOscillator();
@@ -377,22 +392,18 @@ export default function BinauralBeatsApp() {
       oL.frequency.setValueAtTime(carrierFreq, startTime);
       oR.frequency.setValueAtTime(carrierFreq + pulseFreq, startTime);
 
-      oL.connect(pL).connect(anal);
-      oR.connect(pR).connect(anal);
+      oL.connect(pL).connect(analyserRef.current!);
+      oR.connect(pR).connect(analyserRef.current!);
 
       oL.start(startTime); 
       oR.start(startTime);
       oscLeftRef.current = oL;
       oscRightRef.current = oR;
 
-      // Isochronic Layer (Always initialized but volume controlled)
-      if (!isochronicModuleRef.current) {
-        isochronicModuleRef.current = new IsochronicModule(ctx);
-        isochronicModuleRef.current.connect(anal);
-      }
-      isochronicModuleRef.current.setPulseType(pulseType);
-      isochronicModuleRef.current.setIntensity(isIsoEnabled ? isoIntensity : 0, startTime);
-      isochronicModuleRef.current.start(startTime, carrierFreq, pulseFreq);
+      // Isochronic Layer
+      isochronicModuleRef.current!.setPulseType(pulseType);
+      isochronicModuleRef.current!.setIntensity(isIsoEnabled ? isoIntensity : 0, startTime);
+      isochronicModuleRef.current!.start(startTime, carrierFreq, pulseFreq);
 
       // Cinematic Fade-In
       masterGainRef.current!.gain.cancelScheduledValues(ctx.currentTime);
@@ -405,7 +416,7 @@ export default function BinauralBeatsApp() {
       setIsPlaying(true);
       if (!hasStarted) setHasStarted(true);
     }
-  };
+  }, [isPlaying, initAudio, carrierFreq, pulseFreq, pulseType, isIsoEnabled, isoIntensity, volume, fletcherGain]);
 
   const changePreset = (preset: WavePreset) => {
     setActivePreset(preset.id);
@@ -442,15 +453,21 @@ export default function BinauralBeatsApp() {
   }, [pulseType]);
 
   useEffect(() => {
+    // Attempt to initialize early to start loading assets
+    // AudioContext will be suspended until user interaction
+    initAudio().catch(console.error);
+
     return () => {
       oscLeftRef.current?.stop();
       oscRightRef.current?.stop();
       if (isochronicModuleRef.current) {
         isochronicModuleRef.current.stop();
       }
-      audioCtxRef.current?.close();
+      if (audioCtxRef.current) {
+        audioCtxRef.current.close();
+      }
     };
-  }, []);
+  }, [initAudio]);
 
   return (
     <div className="fixed inset-0 overflow-hidden bg-zinc-950 select-none">
