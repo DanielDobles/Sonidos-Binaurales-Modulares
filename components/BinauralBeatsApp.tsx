@@ -64,26 +64,24 @@ function AuroraWaveform({
     uTime: { value: 0 },
     uColor: { value: new THREE.Color() },
     uAudioBuffer: { value: audioTexture },
-    uIsPlaying: { value: 0.0 }
+    uIsPlaying: { value: 0.0 },
+    uMaxAmplitude: { value: 1.2 }
   }), [audioTexture]);
 
   useFrame((state) => {
     const { clock } = state;
     const t = clock.getElapsedTime();
     
-    // 1. Stochastic Band-Limited Modulation (Aggressive Asymmetric Sweep)
-    const noiseValue = Math.sin(t * 0.23) * Math.cos(t * 0.091); // -1.0 to 1.0 range
+    const noiseValue = Math.sin(t * 0.23) * Math.cos(t * 0.091);
     const range = activePresetData.maxFreq - activePresetData.minFreq;
     const currentInstantPulse = activePresetData.minFreq + ((noiseValue + 1.0) / 2.0) * range;
 
-    // 2. Hardware Injection & DSP Sync
     if (materialRef.current) {
       materialRef.current.uniforms.uTime.value = t;
       materialRef.current.uniforms.uColor.value.setHSL(baseHue / 360, 0.8, 0.5);
       materialRef.current.uniforms.uIsPlaying.value = isPlaying ? 1.0 : 0.0;
 
       if (isPlaying && analyserRef.current && audioCtxRef.current) {
-        // Direct Web Audio API Injection (120Hz/60Hz)
         if (oscRightRef.current) {
           oscRightRef.current.frequency.setValueAtTime(
             activePresetData.carrierFreq + currentInstantPulse, 
@@ -91,23 +89,24 @@ function AuroraWaveform({
           );
         }
 
-        // Scientific Raw Buffer Normalization [-1.0, 1.0]
+        // 1. Rigorous Amplitude Normalization [-1.0, 1.0]
         analyserRef.current.getByteTimeDomainData(byteDataArray);
         for (let i = 0; i < 256; i++) {
-          floatDataArray[i] = (byteDataArray[i] - 128) / 128.0; // 128 -> 0.0
+          const byteData = byteDataArray[i];
+          const normalizedValue = (byteData - 128.0) / 128.0; // 128 (center) -> 0.0
+          floatDataArray[i] = normalizedValue;
         }
         materialRef.current.uniforms.uAudioBuffer.value.needsUpdate = true;
       }
     }
 
-    // 3. 60 FPS DOM Interpolation (Lerp)
     if (isPlaying && pulseTextRef.current) {
       visualPulse.current += (currentInstantPulse - visualPulse.current) * 0.1;
       pulseTextRef.current.textContent = visualPulse.current.toFixed(1) + " Hz";
     }
 
     if (meshRef.current) {
-      meshRef.current.rotation.z = Math.sin(t * 0.1) * 0.02;
+      meshRef.current.rotation.z = Math.sin(t * 0.1) * 0.01;
     }
   });
 
@@ -116,6 +115,7 @@ function AuroraWaveform({
       varying vec2 vUv;
       uniform float uTime;
       uniform float uIsPlaying;
+      uniform float uMaxAmplitude;
       uniform sampler2D uAudioBuffer;
       
       void main() {
@@ -124,16 +124,14 @@ function AuroraWaveform({
         
         // Scientific Audio Extraction [-1.0, 1.0]
         float audioData = texture2D(uAudioBuffer, vec2(vUv.x, 0.5)).r;
+        float audioDisplacement = audioData * uIsPlaying;
         
-        // Exact Symmetric Distortion
-        float displacement = audioData * 2.0 * uIsPlaying;
-        float latentWave = sin(pos.x * 3.0 + uTime * 2.0) * 0.1;
+        // Exact Symmetric Distortion & Rigid Box Clamping
+        // Baseline 0.0 is silence. Crests to 1.0, Valleys to -1.0.
+        pos.y = clamp(pos.y + (audioDisplacement * uMaxAmplitude), -1.0, 1.0);
         
-        pos.y += mix(latentWave, displacement, uIsPlaying);
-        
-        // Strict Geometric Clamping (Oscilloscope Lock)
-        pos.y = clamp(pos.y, -1.0, 1.0);
-        pos.z += displacement * 0.5;
+        // Subtle depth for Aurora look
+        pos.z += audioDisplacement * 0.3;
         
         gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
       }
@@ -145,21 +143,24 @@ function AuroraWaveform({
       uniform float uIsPlaying;
 
       void main() {
-        // Soft Aurora Gaseous Masking
-        float edgeY = smoothstep(0.0, 0.5, vUv.y) * smoothstep(1.0, 0.5, vUv.y);
+        // Soft Aurora Gaseous Masking (Diffuse Edge Transparency)
+        float intensity = 1.0 - abs(vUv.y - 0.5) * 2.0;
+        intensity = pow(intensity, 3.0); 
+        
         float edgeX = smoothstep(0.0, 0.1, vUv.x) * smoothstep(1.0, 0.9, vUv.x);
         
-        float glow = sin(vUv.x * 20.0 + uTime * 2.0) * 0.5 + 0.5;
-        vec3 finalColor = mix(uColor, vec3(1.0), glow * 0.15);
+        // Physical Spectrum Glow
+        float glow = sin(vUv.x * 12.0 - uTime * 2.5) * 0.5 + 0.5;
+        vec3 finalColor = mix(uColor, vec3(1.0), glow * 0.2);
         
-        gl_FragColor = vec4(finalColor, edgeY * edgeX * mix(0.3, 0.8, uIsPlaying));
+        gl_FragColor = vec4(finalColor, intensity * edgeX * mix(0.1, 0.9, uIsPlaying));
       }
     `
   }), []);
 
   return (
-    <mesh ref={meshRef} position={[0, 0, 0]} rotation={[-Math.PI / 12, 0, 0]}>
-      <planeGeometry args={[12, 3, 256, 32]} />
+    <mesh ref={meshRef} position={[0, 0, 0]} rotation={[-Math.PI / 15, 0, 0]}>
+      <planeGeometry args={[14, 3, 256, 32]} />
       <shaderMaterial
         ref={materialRef}
         args={[shaderArgs]}
