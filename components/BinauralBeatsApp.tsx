@@ -97,17 +97,17 @@ export default function BinauralBeatsApp() {
   const [aiPrompt, setAiPrompt] = useState<string>('');
   const [isAiLoading, setIsAiLoading] = useState<boolean>(false);
   const [aiError, setAiError] = useState<string | null>(null);
-  const [activeProgramName, setActiveProgramName] = useState<string>('Ondas de Calma Inicial');
-  const [aiExplanation, setAiExplanation] = useState<string>('Esta sesión inicial combina ondas portadoras de 180Hz con un pulso de 10Hz en el rango Alfa para sincronizar tus hemisferios y disolver el estrés con micro-variaciones controladas.');
+  const [activeProgramName, setActiveProgramName] = useState<string>('Initial Calm Waves');
+  const [aiExplanation, setAiExplanation] = useState<string>('This initial session combines 180Hz carrier waves with a 10Hz pulse in the Alpha range to synchronize your hemispheres and dissolve stress with controlled micro-variations.');
   
   // Adaptive modulation pattern with micro-variations that keep the frequency within the same brainwave range
   const [modulationSteps, setModulationSteps] = useState<ModulationStep[]>([
-    { stepName: 'Sincronización Inicial', carrierOffset: 0, beatOffset: 0 },
-    { stepName: 'Optimización de Frecuencia', carrierOffset: 4, beatOffset: 0.3 },
-    { stepName: 'Alineación Cortical', carrierOffset: -3, beatOffset: -0.2 },
-    { stepName: 'Estabilización Transitoria', carrierOffset: 6, beatOffset: 0.5 },
-    { stepName: 'Resonancia Focal', carrierOffset: -5, beatOffset: -0.4 },
-    { stepName: 'Armonización Integrada', carrierOffset: 2, beatOffset: 0 }
+    { stepName: 'Initial Synchronization', carrierOffset: 0, beatOffset: 0 },
+    { stepName: 'Frequency Optimization', carrierOffset: 4, beatOffset: 0.3 },
+    { stepName: 'Cortical Alignment', carrierOffset: -3, beatOffset: -0.2 },
+    { stepName: 'Transient Stabilization', carrierOffset: 6, beatOffset: 0.5 },
+    { stepName: 'Focal Resonance', carrierOffset: -5, beatOffset: -0.4 },
+    { stepName: 'Integrated Harmonization', carrierOffset: 2, beatOffset: 0 }
   ]);
 
   // Canvas visualizer reference
@@ -118,58 +118,58 @@ export default function BinauralBeatsApp() {
   const presets: WavePreset[] = [
     { 
       id: 'delta', 
-      name: 'Ondas Delta', 
+      name: 'Delta Waves', 
       range: '1 - 4 Hz', 
       beatFreq: 2.5, 
       carrierFreq: 120, 
-      description: 'Sueño profundo, reparación celular, descanso trascendental libre de sueños.',
+      description: 'Deep sleep, cellular repair, dreamless transcendental rest.',
       icon: <Moon className="w-4 h-4" /> 
     },
     { 
       id: 'theta', 
-      name: 'Ondas Theta', 
+      name: 'Theta Waves', 
       range: '4 - 8 Hz', 
       beatFreq: 6.0, 
       carrierFreq: 150, 
-      description: 'Meditación budista profunda, estados creativos fluidos, acceso al subconsciente.',
+      description: 'Deep meditative states, creative flow, subconscious access.',
       icon: <Sparkles className="w-4 h-4" /> 
     },
     { 
       id: 'alpha', 
-      name: 'Ondas Alfa', 
+      name: 'Alpha Waves', 
       range: '8 - 12 Hz', 
       beatFreq: 10.0, 
       carrierFreq: 180, 
-      description: 'Relajación consciente, estado de flujo cognitivo, absorción de nuevo aprendizaje.',
+      description: 'Conscious relaxation, flow state, learning absorption.',
       icon: <Compass className="w-4 h-4" /> 
     },
     { 
       id: 'beta', 
-      name: 'Ondas Beta', 
+      name: 'Beta Waves', 
       range: '12 - 30 Hz', 
       beatFreq: 18.0, 
       carrierFreq: 220, 
-      description: 'Enfoque ejecutivo acelerado, razonamiento analítico, resolución de problemas complejos.',
+      description: 'Accelerated focus, analytical reasoning, complex problem solving.',
       icon: <Zap className="w-4 h-4" /> 
     },
     { 
       id: 'gamma', 
-      name: 'Ondas Gamma', 
+      name: 'Gamma Waves', 
       range: '30 - 45 Hz', 
       beatFreq: 38.0, 
       carrierFreq: 260, 
-      description: 'Comprensión integral fulminante, máxima concentración, memoria de corto plazo integrada.',
+      description: 'Heightened insight, peak concentration, memory integration.',
       icon: <Brain className="w-4 h-4 text-emerald-400" /> 
     },
   ];
 
   // Map beat frequency to active band
   const getActivePresetName = useCallback((freq: number) => {
-    if (freq < 4) return 'Delta (Sueño Profundo)';
-    if (freq < 8) return 'Theta (Meditación)';
-    if (freq < 12) return 'Alfa (Calma Alerta)';
-    if (freq < 30) return 'Beta (Cognición)';
-    return 'Gamma (Procesamiento Elevado)';
+    if (freq < 4) return 'Delta (Deep Sleep)';
+    if (freq < 8) return 'Theta (Meditation)';
+    if (freq < 12) return 'Alpha (Alert Calm)';
+    if (freq < 30) return 'Beta (Cognition)';
+    return 'Gamma (Peak Processing)';
   }, []);
 
   // --- AUDIO SYNTHESIS ENGINE FUNCTIONS ---
@@ -996,11 +996,11 @@ export default function BinauralBeatsApp() {
 
           <div className="grid grid-cols-2 gap-4">
             <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
-              <label className="text-[10px] text-slate-400 uppercase tracking-widest">Frecuencia Base</label>
+              <label className="text-[10px] text-slate-400 uppercase tracking-widest">Base Frequency</label>
               <div className="text-xl font-bold text-white">{carrierFreq} Hz</div>
             </div>
             <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
-              <label className="text-[10px] text-slate-400 uppercase tracking-widest">Beat</label>
+              <label className="text-[10px] text-slate-400 uppercase tracking-widest">Pulse</label>
               <div className="text-xl font-bold text-white">{binauralBeatFreq} Hz</div>
             </div>
           </div>
