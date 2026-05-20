@@ -49,6 +49,10 @@ export class IsochronicModule {
   // Mix Balance (0.0 = pure synthetic, 1.0 = pure sample)
   private _mixBalance: number = 0.4;
 
+  // Clipping Detection
+  private monitorNode: AnalyserNode;
+  public onClipping?: (isClipping: boolean) => void;
+
   constructor(ctx: AudioContext) {
     this.ctx = ctx;
     
@@ -56,6 +60,7 @@ export class IsochronicModule {
     this.carrierGainNode = this.ctx.createGain();
     this.sampleGainNode = this.ctx.createGain();
     this.mixGainNode = this.ctx.createGain();
+    this.monitorNode = this.ctx.createAnalyser();
     
     this.shaperNode = this.ctx.createWaveShaper();
     this.driveNode = this.ctx.createWaveShaper();
@@ -64,6 +69,9 @@ export class IsochronicModule {
     this.qGainNode = this.ctx.createGain();
     this.modGainNode = this.ctx.createGain();
     this.outputGainNode = this.ctx.createGain();
+
+    // Clipping monitor config
+    this.monitorNode.fftSize = 32;
 
     // 1. Resonant Filter (Bandpass Maestro)
     this.filterNode.type = 'bandpass';
@@ -76,7 +84,6 @@ export class IsochronicModule {
     this.lowShelfNode.gain.value = 0;
 
     // Signal Path Configuration
-    // [Sources] -> [Source Gains] -> [MixGain] -> [Envelope] -> [Filter] -> [Shelf] -> [Drive] -> [Output]
     this.carrierGainNode.connect(this.mixGainNode);
     this.sampleGainNode.connect(this.mixGainNode);
     
@@ -85,72 +92,73 @@ export class IsochronicModule {
     this.filterNode.connect(this.lowShelfNode);
     this.lowShelfNode.connect(this.driveNode);
     this.driveNode.connect(this.outputGainNode);
+    
+    // Connect output to monitor
+    this.outputGainNode.connect(this.monitorNode);
 
-    // Modulation Path (LFO -> Shaper -> modGainNode.gain)
+    // Modulation Path
     this.shaperNode.connect(this.modGainNode.gain);
     this.shaperNode.connect(this.qGainNode);
     this.qGainNode.connect(this.filterNode.Q);
     
-    // Initial Values
     this.modGainNode.gain.value = 0.0;
-    this.outputGainNode.gain.value = 0.5;
+    this.outputGainNode.gain.value = 0.25; // Safer default
     this.qGainNode.gain.value = 10.0;
     
     this.updateGainStaging();
     this.regenerateCurve();
     this.updateDriveCurve();
+    this.startMonitor();
     
     // Auto-load sample
     this.isBufferLoaded = this.loadSample('/IsochronicModule.wav');
   }
 
   /**
-   * Professional Gain Staging: Logarithmic normalization to prevent clipping.
-   * Ensures the sum of both sources is balanced and safe (< 0dB).
+   * Proportional Volume Control (Quadratic mapping)
    */
-  private updateGainStaging(time: number = this.ctx.currentTime) {
-    const balance = this._mixBalance;
-    // Equal-power crossfade approximation for smooth mixing
-    const carrierLevel = Math.cos(balance * 0.5 * Math.PI);
-    const sampleLevel = Math.sin(balance * 0.5 * Math.PI);
+  public setIntensity(val: number, time: number = this.ctx.currentTime) {
+    this._intensity = val;
+    // quadratic mapping for natural feel (log-like)
+    const gain = val * val;
+    this.outputGainNode.gain.setTargetAtTime(gain, time, 0.05);
+  }
 
-    // Normalize to prevent sum exceeding 1.0 linearly
-    const total = carrierLevel + sampleLevel;
-    const norm = 1.0 / Math.max(1.0, total);
-
-    this.carrierGainNode.gain.setTargetAtTime(carrierLevel * norm, time, 0.05);
-    this.sampleGainNode.gain.setTargetAtTime(sampleLevel * norm, time, 0.05);
+  private startMonitor() {
+    const buffer = new Float32Array(this.monitorNode.fftSize);
+    const check = () => {
+      if (!this.isRunning) return;
+      this.monitorNode.getFloatTimeDomainData(buffer);
+      let clipped = false;
+      for (let i = 0; i < buffer.length; i++) {
+        if (Math.abs(buffer[i]) > 0.99) {
+          clipped = true;
+          break;
+        }
+      }
+      if (this.onClipping) this.onClipping(clipped);
+      requestAnimationFrame(check);
+    };
+    if (this.isRunning) check();
   }
 
   /**
-   * Harmonic Locking: Calculates the even harmonic relationship.
-   * Finds the playbackRate that aligns the sample with the resonance carrier.
+   * Harmonic Locking: Ensures tonal consonance.
    */
-  private calculateHarmonicLockedRate(freq: number): number {
+  private calculateHarmonicRatio(freq: number): number {
     if (!this.buffer) return 1.0;
-
-    // Base synchronization for rhythmic phase
     const syncRate = this.buffer.duration * freq;
     
-    // Harmonic Locking logic:
-    // We want the internal frequency content of the sample to be an even multiple
-    // of the resonance carrier. Assuming sample base is harmonically compatible.
-    // We find the nearest power of 2 that respects the frequency range.
     let harmonicMultiplier = 1.0;
     if (this._resonanceCarrier > 0) {
-        // Find nearest octave relationship
         const ratio = this._resonanceCarrier / freq;
         const octaves = Math.round(Math.log2(ratio));
         harmonicMultiplier = Math.pow(2, octaves);
     }
 
-    // Combine sync with harmonic multiplier, clamped for stability
-    const finalRate = syncRate * (harmonicMultiplier > 0 ? 1.0 : 1.0); // Simple sync for now, refined below
-    
-    // Refining: Use even multiples (2, 4, 8) to maintain consonance
     let timbreMod = 1.0;
-    if (freq >= 30) timbreMod = 0.5; // Double density for Gamma
-    else if (freq <= 4) timbreMod = 2.0; // Half density for Delta
+    if (freq >= 30) timbreMod = 0.5;
+    else if (freq <= 4) timbreMod = 2.0;
     
     return Math.max(0.1, Math.min(syncRate * timbreMod + this._pitchOffset, 8.0));
   }
