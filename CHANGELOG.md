@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.0] - 2026-05-20
+
+### Added
+- **Audio "Blur" System:** Implementation of graceful 500ms fade-outs and cinematic 4s fade-ins for smoother session transitions.
+- **Dynamic LFO Sync:** Synchronized LFO micro-modulation across binaural and isochronic layers for perfect psychoacoustic phase alignment.
+- **AI Schema v2:** Updated psychoacoustic API with `beatLfoAmplitude` and `beatLfoRate` for generative modular sessions.
+- **Ethereal Envelopes:** Softened isochronic pulse attack (150ms) and release (400ms) for a less percussive, more "blurred" acoustic profile.
+
+### Changed
+- **UI Scaling:** Optimized cinematic zoom to 1.30 (+5%) for controls and 1.20 (-10% reduction) for the intro screen for better visual balance.
+- **Transition Dynamics:** Increased frequency sliding time constant to 1.2s for "slurred" pitch transitions.
+
+### Fixed
+- **Stochastic Sync Drift:** Constrained stochastic frequency variations to stay strictly within active clinical brainwave ranges (min/max).
+- **UI Restoration:** Recovered high-fidelity aesthetics, including Grainient noise filters, dynamic LED glows, and developer credits.
+
 ## [1.1.0] - 2026-05-20
 
 ### Added
