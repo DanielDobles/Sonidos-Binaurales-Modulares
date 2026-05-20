@@ -430,7 +430,7 @@ export default function BinauralBeatsApp() {
       <AnimatePresence mode="wait">
         {!hasStarted ? (
           <motion.div
-            key="intro" initial={{ opacity: 0, scale: 1.15 }} animate={{ opacity: 1, scale: 1.25 }} exit={{ opacity: 0, scale: 1.35 }}
+            key="intro" initial={{ opacity: 0, scale: 1.15 }} animate={{ opacity: 1, scale: 1.30 }} exit={{ opacity: 0, scale: 1.40 }}
             className="fixed inset-0 flex flex-col items-center justify-center z-50 p-4 bg-zinc-950/20 backdrop-blur-sm"
           >
             <BorderGlow className="p-12 md:p-16 pb-14 md:pb-20" borderRadius={42} glowColor={`${baseHue} 80 60`} backgroundColor="rgba(9, 9, 11, 0.8)" animated={true} glowIntensity={1.2} colors={[`hsla(${baseHue}, 80%, 60%, 1)`, `hsla(${baseHue + 40}, 70%, 50%, 1)`, '#ffffff']}>
@@ -468,8 +468,8 @@ export default function BinauralBeatsApp() {
         ) : (
           <div key="controls-container" className="fixed inset-0 flex items-center justify-center z-10 p-4 pointer-events-none">
             <motion.div
-              key="controls" initial={{ opacity: 0, y: 40, scale: 1.15 }} animate={{ opacity: 1, y: 0, scale: 1.25 }}
-              exit={{ opacity: 0, scale: 1.35, filter: 'blur(20px)' }}
+              key="controls" initial={{ opacity: 0, y: 40, scale: 1.15 }} animate={{ opacity: 1, y: 0, scale: 1.30 }}
+              exit={{ opacity: 0, scale: 1.40, filter: 'blur(20px)' }}
               transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
               className="pointer-events-auto w-full max-w-[550px] bg-zinc-950/80 backdrop-blur-2xl border border-white/10 rounded-[42px] p-6 flex flex-col gap-4 relative shadow-[0_48px_100px_rgba(0,0,0,0.8)] origin-center"
             >
