@@ -200,6 +200,11 @@ export default function BinauralBeatsApp() {
       lfoGain.gain.value = 0.3;    // ±0.3Hz micro-modulation
       
       aL.fftSize = 2048; pL.pan.value = -1; pR.pan.value = 1;
+      
+      // Set initial frequencies immediately to avoid default 440Hz jump
+      oL.frequency.setValueAtTime(carrierFreq, ctx.currentTime);
+      oR.frequency.setValueAtTime(carrierFreq + binauralBeatFreq, ctx.currentTime);
+      
       oL.connect(aL).connect(pL).connect(master);
       oR.connect(pR).connect(master);
       lfo.connect(lfoGain).connect(oR.frequency);
@@ -209,7 +214,6 @@ export default function BinauralBeatsApp() {
       lfoRef.current = lfo; lfoGainRef.current = lfoGain;
       analyserLeftRef.current = aL;
       setIsPlaying(true);
-      updateFrequencies(carrierFreq, binauralBeatFreq);
     }
   };
 
