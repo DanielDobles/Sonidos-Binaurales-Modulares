@@ -409,7 +409,8 @@ export default function BinauralBeatsApp() {
       isochronicModuleRef.current!.start(startTime, carrierFreq, pulseFreq);
       
       masterGainRef.current!.gain.cancelScheduledValues(ctx.currentTime);
-      masterGainRef.current!.gain.setTargetAtTime(Math.max(volume * fletcherGain, 0.001), ctx.currentTime, 1.5);
+      // Increased time constant (4.0) for a long, cinematic atmospheric fade-in
+      masterGainRef.current!.gain.setTargetAtTime(Math.max(volume * fletcherGain, 0.001), ctx.currentTime, 4.0);
       setIsPlaying(true);
       if (!hasStarted) setHasStarted(true);
     }
