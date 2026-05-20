@@ -432,6 +432,20 @@ export default function BinauralBeatsApp() {
                 </button>
               </motion.div>
             </BorderGlow>
+
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 1.2, duration: 1 }}
+              className="mt-12 flex flex-col items-center gap-3 pointer-events-none"
+            >
+              <div className="flex items-center gap-4">
+                <span className="text-[10px] font-mono font-light tracking-[0.4em] uppercase text-white/20">Developed by</span>
+                <span className="text-[10px] font-mono font-medium tracking-[0.4em] uppercase text-white/60">Daniel Dobles</span>
+              </div>
+              <div className="w-16 h-px bg-white/10" />
+              <span className="text-[9px] font-mono font-light tracking-[0.5em] uppercase text-white/15">DSP Sound Engineering</span>
+            </motion.div>
           </motion.div>
         ) : (
           <div key="controls-container" className="fixed inset-0 flex items-center justify-center z-10 p-4 pointer-events-none">
