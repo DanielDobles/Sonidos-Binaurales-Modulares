@@ -6,8 +6,8 @@ import { cn } from "@/lib/utils";
 const jetbrainsMono = JetBrains_Mono({subsets:['latin'],variable:'--font-mono'});
 
 export const metadata: Metadata = {
-  title: 'My Google AI Studio App',
-  description: 'My Google AI Studio App',
+  title: 'Neuro-Sync Engine',
+  description: 'Neuro-Sync Engine - Modular Binaural Beats & Solfeggio Resonance',
 };
 
 export default function RootLayout({children}: {children: React.ReactNode}) {
