@@ -249,6 +249,7 @@ export default function BinauralBeatsApp() {
   const audioStartTimeRef = useRef<number>(0);
   const isochronicModuleRef = useRef<IsochronicModule | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
+  const stopTimerRef = useRef<any>(null);
   const pulseTextRef = useRef<HTMLSpanElement | null>(null);
 
   const currentSolfeggio = useMemo(() => SOLFEGGIO.find(s => s.id === activeSolfeggio) || SOLFEGGIO[2], [activeSolfeggio]);
@@ -329,8 +330,13 @@ export default function BinauralBeatsApp() {
   }, [carrierFreq, volume, fletcherGain]);
 
   const initAudio = useCallback(async () => {
-    if (!audioCtxRef.current) {
+    if (!audioCtxRef.current || audioCtxRef.current.state === 'closed') {
       audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      // When context changes, all nodes MUST be recreated to avoid InvalidAccessError
+      masterGainRef.current = null;
+      analyserRef.current = null;
+      isochronicModuleRef.current = null;
+      lfoGainRef.current = null;
     }
     const ctx = audioCtxRef.current;
     if (ctx.state === 'suspended') await ctx.resume();
@@ -347,6 +353,11 @@ export default function BinauralBeatsApp() {
   }, []);
 
   const toggleSound = useCallback(async () => {
+    if (stopTimerRef.current) {
+      clearTimeout(stopTimerRef.current);
+      stopTimerRef.current = null;
+    }
+
     if (isPlaying) {
       const ctx = audioCtxRef.current;
       if (ctx && masterGainRef.current) {
@@ -356,9 +367,14 @@ export default function BinauralBeatsApp() {
         masterGainRef.current.gain.setTargetAtTime(0, now, fadeOutTime / 4);
         
         // Final stop after fade
-        setTimeout(() => {
-          [oscLeftRef, oscRightRef, lfoOscRef].forEach(ref => { ref.current?.stop(); ref.current = null; });
+        stopTimerRef.current = setTimeout(() => {
+          [oscLeftRef, oscRightRef, lfoOscRef].forEach(ref => {
+            try { ref.current?.stop(); } catch (e) {}
+            ref.current = null;
+          });
+          lfoGainRef.current = null;
           isochronicModuleRef.current?.stop();
+          stopTimerRef.current = null;
         }, fadeOutTime * 1000);
       }
       setIsPlaying(false);
@@ -439,10 +455,29 @@ export default function BinauralBeatsApp() {
   useEffect(() => {
     initAudio().catch(console.error);
     return () => {
-      [oscLeftRef, oscRightRef, lfoOscRef].forEach(ref => { ref.current?.stop(); ref.current = null; });
-      if (isochronicModuleRef.current) { isochronicModuleRef.current.stop(); isochronicModuleRef.current = null; }
+      [oscLeftRef, oscRightRef, lfoOscRef].forEach(ref => {
+        try { ref.current?.stop(); } catch (e) {}
+        ref.current = null;
+      });
+      if (isochronicModuleRef.current) {
+        try { isochronicModuleRef.current.stop(); } catch (e) {}
+        isochronicModuleRef.current = null;
+      }
+      masterGainRef.current = null;
+      analyserRef.current = null;
+      lfoGainRef.current = null;
+      if (stopTimerRef.current) {
+        clearTimeout(stopTimerRef.current);
+        stopTimerRef.current = null;
+      }
+      
       const ctx = audioCtxRef.current;
-      if (ctx && ctx.state !== 'closed') { audioCtxRef.current = null; ctx.close().catch(() => {}); }
+      if (ctx) {
+        audioCtxRef.current = null;
+        if (ctx.state !== 'closed') {
+          ctx.close().catch(() => {});
+        }
+      }
     };
   }, [initAudio]);
 
