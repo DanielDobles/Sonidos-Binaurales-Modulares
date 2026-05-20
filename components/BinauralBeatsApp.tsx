@@ -268,17 +268,42 @@ export default function BinauralBeatsApp() {
     if (isAutoMode) setAutoBeatFreq(preset.beatFreq);
   }, [isPlaying, carrierFreq, isAutoMode]);
 
-  // AUTO-TRANSITION (Markov Model)
+  // AUTO-TRANSITION (Markov Model) & STOCHASTIC DRIFT
   useEffect(() => {
     if (!isAutoMode || !isPlaying) return;
+
+    // 1. STOCHASTIC DRIFT (Micro-variations within the range)
+    const driftInterval = setInterval(() => {
+      setAutoBeatFreq(prev => {
+        const range = currentPreset.maxFreq - currentPreset.minFreq;
+        const volatility = range * 0.03; // 3% of range volatility
+        const center = (currentPreset.maxFreq + currentPreset.minFreq) / 2;
+        const drift = (center - prev) * 0.05; // Slight pull towards center
+        const step = (Math.random() - 0.5) * volatility + drift;
+        const next = Math.max(currentPreset.minFreq, Math.min(currentPreset.maxFreq, prev + step));
+
+        if (audioCtxRef.current && oscRightRef.current) {
+          const now = audioCtxRef.current.currentTime;
+          // Apply change smoothly
+          oscRightRef.current.frequency.setTargetAtTime(carrierFreq + next, now, 0.5);
+        }
+        return next;
+      });
+    }, 3000); // Update every 3 seconds
+
+    // 2. MARKOV TRANSITIONS (Phase jumps)
     const transitionTimer = setInterval(() => {
       const decision = Math.random();
       const currentIndex = PRESETS.findIndex(p => p.id === activePreset);
       if (decision > 0.88 && currentIndex < PRESETS.length - 1) changePreset(PRESETS[currentIndex + 1]);
       else if (decision < 0.12 && currentIndex > 0) changePreset(PRESETS[currentIndex - 1]);
     }, 45000); // 45 seconds per phase
-    return () => clearInterval(transitionTimer);
-  }, [isAutoMode, isPlaying, activePreset, changePreset]);
+
+    return () => {
+      clearInterval(driftInterval);
+      clearInterval(transitionTimer);
+    };
+  }, [isAutoMode, isPlaying, activePreset, currentPreset, carrierFreq, changePreset]);
 
   // PSYCHOACOUSTIC LFO CONTROL
   useEffect(() => {
