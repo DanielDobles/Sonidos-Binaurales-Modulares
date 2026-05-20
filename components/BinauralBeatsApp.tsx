@@ -176,14 +176,7 @@ function AuroraWaveform({
       materialRef.current.uniforms.uIsPlaying.value = THREE.MathUtils.lerp(materialRef.current.uniforms.uIsPlaying.value, isPlaying ? 1.0 : 0.0, 0.05);
 
       if (isPlaying && analyserRef.current && audioCtxRef.current) {
-        const noiseValue = Math.sin(t * 0.15) * Math.cos(t * 0.07);
-        const range = activePresetData.maxFreq - activePresetData.minFreq;
-        const currentInstantPulse = activePresetData.minFreq + ((noiseValue + 1.0) / 2.0) * range;
-
-        if (oscRightRef.current) {
-          oscRightRef.current.frequency.setTargetAtTime(carrierFreq + currentInstantPulse, audioCtxRef.current.currentTime, 0.1);
-        }
-
+        // SE ELIMINA LA MODULACIÓN DE FRECUENCIA POR FRAME PARA EVITAR ZIPPER NOISE Y DESINCRONIZACIÓN
         analyserRef.current.getByteTimeDomainData(byteDataArray);
         for (let i = 0; i < 128; i++) {
           floatDataArray[i] = (byteDataArray[i] - 128.0) / 128.0;
@@ -193,10 +186,7 @@ function AuroraWaveform({
     }
 
     if (pulseTextRef.current) {
-      const noiseValue = Math.sin(t * 0.15) * Math.cos(t * 0.07);
-      const range = activePresetData.maxFreq - activePresetData.minFreq;
-      const currentInstantPulse = activePresetData.minFreq + ((noiseValue + 1.0) / 2.0) * range;
-      visualPulse.current = THREE.MathUtils.lerp(visualPulse.current, isPlaying ? currentInstantPulse : activePresetData.beatFreq, 0.1);
+      visualPulse.current = THREE.MathUtils.lerp(visualPulse.current, activePresetData.beatFreq, 0.1);
       pulseTextRef.current.textContent = visualPulse.current.toFixed(2);
     }
 
