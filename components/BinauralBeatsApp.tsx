@@ -8,6 +8,7 @@ import { twMerge } from 'tailwind-merge';
 import { Canvas, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import BorderGlow from './BorderGlow';
+import { IsochronicModule } from '../lib/IsochronicModule';
 
 /**
  * UTILS
@@ -52,13 +53,37 @@ const SOLFEGGIO: SolfeggioPreset[] = [
 ];
 
 /**
- * PSYCHOACOUSTIC UTILS: Fletcher-Munson (ISO 226:2003) Approximation
- * Maps frequency (Hz) to a gain correction factor for constant perceived loudness.
+ * PSYCHOACOUSTIC UTILS: Fletcher-Munson (ISO 226:2003) Equal Loudness Contours
+ * Maps frequency (Hz) to a gain correction factor (0.0 to 1.0) to normalize perceived volume.
  */
 function getFletcherMunsonGain(freq: number): number {
-  if (freq < 800) return 1.0; 
-  if (freq >= 1000 && freq < 4000) return 0.7; 
-  if (freq >= 5000 && freq <= 8000) return 0.9;
+  // Key reference points based on human auditory sensitivity:
+  // - 400Hz to 800Hz (low sensitivity): base gain = 1.0
+  // - 1kHz to 4kHz (high sensitivity - peak at ~3kHz): gain = 0.6 to 0.8 (attenuation to prevent harshness)
+  // - 5kHz to 8kHz (decreasing sensitivity): gain = 0.9
+  const points = [
+    { f: 0, g: 1.0 },
+    { f: 400, g: 1.0 },
+    { f: 800, g: 1.0 },
+    { f: 1000, g: 0.75 },
+    { f: 2500, g: 0.60 }, // Peak sensitivity (maximum attenuation)
+    { f: 4000, g: 0.78 },
+    { f: 5000, g: 0.90 },
+    { f: 8000, g: 0.90 }
+  ];
+
+  if (freq <= points[0].f) return points[0].g;
+  if (freq >= points[points.length - 1].f) return points[points.length - 1].g;
+
+  for (let i = 0; i < points.length - 1; i++) {
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    if (freq >= p1.f && freq <= p2.f) {
+      // Linear interpolation
+      const t = (freq - p1.f) / (p2.f - p1.f);
+      return p1.g + t * (p2.g - p1.g);
+    }
+  }
   return 1.0;
 }
 
@@ -71,7 +96,7 @@ const Grainient = ({ children, className }: { children?: React.ReactNode, classN
       <filter id="noiseFilter">
         <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="2" stitchTiles="stitch" />
       </filter>
-      <rect width="100%" height="100%" filter="url(%23noiseFilter)" />
+      <rect width="100%" height="100%" filter="url(#noiseFilter)" />
     </svg>
     {children}
   </div>
@@ -236,15 +261,19 @@ function getWeightingGain(f: number): number {
  */
 export default function BinauralBeatsApp() {
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
+  const [hasStarted, setHasStarted] = useState<boolean>(false);
+  const [audioMode, setAudioMode] = useState<'binaural' | 'isochronic'>('binaural');
   const [activePreset, setActivePreset] = useState<string>('alpha');
   const [activeSolfeggio, setActiveSolfeggio] = useState<string>('mi');
   const [volume, setVolume] = useState<number>(0.7);
+  const [dutyCycle, setDutyCycleState] = useState<number>(0.50);
 
   // Refs for Audio Engine
   const audioCtxRef = useRef<AudioContext | null>(null);
   const masterGainRef = useRef<GainNode | null>(null);
   const oscLeftRef = useRef<OscillatorNode | null>(null);
   const oscRightRef = useRef<OscillatorNode | null>(null);
+  const isochronicModuleRef = useRef<IsochronicModule | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const pulseTextRef = useRef<HTMLSpanElement | null>(null);
 
@@ -256,18 +285,43 @@ export default function BinauralBeatsApp() {
 
 // Psychoacoustic Compensation
   const fletcherGain = useMemo(() => getFletcherMunsonGain(carrierFreq), [carrierFreq]);
+  const fletcherGainRef = useRef(fletcherGain);
 
-  // Volume & Compensation modulation
+  useEffect(() => {
+    fletcherGainRef.current = fletcherGain;
+  }, [fletcherGain]);
+
+  // 1. Fletcher-Munson compensation ramp: Triggers exclusively when carrierFreq changes
   useEffect(() => {
     if (masterGainRef.current && audioCtxRef.current) {
       const targetGain = volume * fletcherGain;
-      masterGainRef.current.gain.cancelScheduledValues(audioCtxRef.current.currentTime);
+      const now = audioCtxRef.current.currentTime;
+      masterGainRef.current.gain.cancelScheduledValues(now);
+      
+      const currentVal = Math.max(masterGainRef.current.gain.value, 0.001);
+      masterGainRef.current.gain.setValueAtTime(currentVal, now);
       masterGainRef.current.gain.exponentialRampToValueAtTime(
         Math.max(targetGain, 0.001), 
-        audioCtxRef.current.currentTime + 0.5
+        now + 1.2 // Smooth 1.2s ramp to prevent auditory roughness/clicks during transition
       );
     }
-  }, [volume, fletcherGain]);
+  }, [carrierFreq]);
+
+  // 2. Volume ramp: Triggers exclusively when manual volume changes
+  useEffect(() => {
+    if (masterGainRef.current && audioCtxRef.current) {
+      const targetGain = volume * fletcherGainRef.current;
+      const now = audioCtxRef.current.currentTime;
+      masterGainRef.current.gain.cancelScheduledValues(now);
+      
+      const currentVal = Math.max(masterGainRef.current.gain.value, 0.001);
+      masterGainRef.current.gain.setValueAtTime(currentVal, now);
+      masterGainRef.current.gain.exponentialRampToValueAtTime(
+        Math.max(targetGain, 0.001), 
+        now + 0.15 // Fast, responsive ramp for active control
+      );
+    }
+  }, [volume]);
 
   const initAudio = async () => {
     if (!audioCtxRef.current) {
@@ -287,29 +341,59 @@ export default function BinauralBeatsApp() {
 
   const toggleSound = async () => {
     if (isPlaying) {
-      // Fade out before stopping could be nice, but requirement specifically asks for Fade-In on start.
-      // For immediate stop as currently implemented:
+      // Stop all oscillators and modules
       oscLeftRef.current?.stop();
+      oscLeftRef.current = null;
       oscRightRef.current?.stop();
+      oscRightRef.current = null;
+      if (isochronicModuleRef.current) {
+        isochronicModuleRef.current.stop();
+      }
       setIsPlaying(false);
+      setHasStarted(false);
     } else {
       const ctx = await initAudio();
       
-      const oL = ctx.createOscillator();
-      const oR = ctx.createOscillator();
-      const pL = ctx.createStereoPanner();
-      const pR = ctx.createStereoPanner();
-      const anal = ctx.createAnalyser();
-
+      // Instantiate Analyser if not present
+      const anal = analyserRef.current || ctx.createAnalyser();
       anal.fftSize = 256;
-      pL.pan.value = -1; // Hard Left
-      pR.pan.value = 1;  // Hard Right
+      analyserRef.current = anal;
 
-      oL.frequency.setValueAtTime(carrierFreq, ctx.currentTime);
-      oR.frequency.setValueAtTime(carrierFreq + currentPreset.beatFreq, ctx.currentTime);
+      // Make sure analyser feeds the master gain
+      anal.connect(masterGainRef.current!);
 
-      oL.connect(pL).connect(anal).connect(masterGainRef.current!);
-      oR.connect(pR).connect(masterGainRef.current!);
+      if (audioMode === 'binaural') {
+        const oL = ctx.createOscillator();
+        const oR = ctx.createOscillator();
+        const pL = ctx.createStereoPanner();
+        const pR = ctx.createStereoPanner();
+
+        pL.pan.value = -1; // Hard Left
+        pR.pan.value = 1;  // Hard Right
+
+        oL.frequency.setValueAtTime(carrierFreq, ctx.currentTime);
+        oR.frequency.setValueAtTime(carrierFreq + currentPreset.beatFreq, ctx.currentTime);
+
+        oL.connect(pL).connect(anal);
+        oR.connect(pR).connect(masterGainRef.current!);
+
+        oL.start(); 
+        oR.start();
+        oscLeftRef.current = oL;
+        oscRightRef.current = oR;
+      } else {
+        // Isochronic mode
+        if (!isochronicModuleRef.current) {
+          isochronicModuleRef.current = new IsochronicModule(ctx);
+        }
+        const iso = isochronicModuleRef.current;
+        iso.setCarrierFreq(carrierFreq);
+        iso.setPulseFreq(currentPreset.beatFreq);
+        iso.setDutyCycle(dutyCycle);
+        iso.setMixLevel(1.0);
+        iso.connect(anal);
+        iso.start(ctx.currentTime);
+      }
 
       // Cinematic Fade-In: 2.5 seconds exponential ramp
       masterGainRef.current!.gain.cancelScheduledValues(ctx.currentTime);
@@ -319,18 +403,71 @@ export default function BinauralBeatsApp() {
         ctx.currentTime + 2.5
       );
 
-      oL.start(); oR.start();
-      oscLeftRef.current = oL;
-      oscRightRef.current = oR;
-      analyserRef.current = anal;
       setIsPlaying(true);
+      if (!hasStarted) {
+        setHasStarted(true);
+      }
+    }
+  };
+
+  const changeAudioMode = async (mode: 'binaural' | 'isochronic') => {
+    setAudioMode(mode);
+    if (isPlaying && audioCtxRef.current) {
+      const ctx = audioCtxRef.current;
+      
+      // Stop current nodes
+      oscLeftRef.current?.stop();
+      oscLeftRef.current = null;
+      oscRightRef.current?.stop();
+      oscRightRef.current = null;
+      if (isochronicModuleRef.current) {
+        isochronicModuleRef.current.stop();
+      }
+
+      const anal = analyserRef.current!;
+
+      if (mode === 'binaural') {
+        const oL = ctx.createOscillator();
+        const oR = ctx.createOscillator();
+        const pL = ctx.createStereoPanner();
+        const pR = ctx.createStereoPanner();
+
+        pL.pan.value = -1;
+        pR.pan.value = 1;
+
+        oL.frequency.setValueAtTime(carrierFreq, ctx.currentTime);
+        oR.frequency.setValueAtTime(carrierFreq + currentPreset.beatFreq, ctx.currentTime);
+
+        oL.connect(pL).connect(anal);
+        oR.connect(pR).connect(masterGainRef.current!);
+
+        oL.start();
+        oR.start();
+        oscLeftRef.current = oL;
+        oscRightRef.current = oR;
+      } else {
+        if (!isochronicModuleRef.current) {
+          isochronicModuleRef.current = new IsochronicModule(ctx);
+        }
+        const iso = isochronicModuleRef.current;
+        iso.setCarrierFreq(carrierFreq);
+        iso.setPulseFreq(currentPreset.beatFreq);
+        iso.setDutyCycle(dutyCycle);
+        iso.setMixLevel(1.0);
+        iso.connect(anal);
+        iso.start(ctx.currentTime);
+      }
     }
   };
 
   const changePreset = (preset: WavePreset) => {
     setActivePreset(preset.id);
-    if (isPlaying && audioCtxRef.current && oscRightRef.current) {
-      oscRightRef.current.frequency.setTargetAtTime(carrierFreq + preset.beatFreq, audioCtxRef.current.currentTime, 0.2);
+    if (isPlaying && audioCtxRef.current) {
+      if (audioMode === 'binaural' && oscRightRef.current) {
+        oscRightRef.current.frequency.setTargetAtTime(carrierFreq + preset.beatFreq, audioCtxRef.current.currentTime, 0.2);
+      } else if (audioMode === 'isochronic' && isochronicModuleRef.current) {
+        isochronicModuleRef.current.setPulseFreq(preset.beatFreq, audioCtxRef.current.currentTime);
+      }
     }
   };
 
@@ -338,8 +475,19 @@ export default function BinauralBeatsApp() {
     setActiveSolfeggio(id);
     const freq = SOLFEGGIO.find(s => s.id === id)?.freq || 528;
     if (isPlaying && audioCtxRef.current) {
-      oscLeftRef.current?.frequency.setTargetAtTime(freq, audioCtxRef.current.currentTime, 0.2);
-      oscRightRef.current?.frequency.setTargetAtTime(freq + currentPreset.beatFreq, audioCtxRef.current.currentTime, 0.2);
+      if (audioMode === 'binaural') {
+        oscLeftRef.current?.frequency.setTargetAtTime(freq, audioCtxRef.current.currentTime, 0.2);
+        oscRightRef.current?.frequency.setTargetAtTime(freq + currentPreset.beatFreq, audioCtxRef.current.currentTime, 0.2);
+      } else if (isochronicModuleRef.current) {
+        isochronicModuleRef.current.setCarrierFreq(freq, audioCtxRef.current.currentTime);
+      }
+    }
+  };
+
+  const changeDutyCycle = (duty: number) => {
+    setDutyCycleState(duty);
+    if (isochronicModuleRef.current) {
+      isochronicModuleRef.current.setDutyCycle(duty);
     }
   };
 
@@ -347,6 +495,9 @@ export default function BinauralBeatsApp() {
     return () => {
       oscLeftRef.current?.stop();
       oscRightRef.current?.stop();
+      if (isochronicModuleRef.current) {
+        isochronicModuleRef.current.stop();
+      }
       audioCtxRef.current?.close();
     };
   }, []);
@@ -379,7 +530,7 @@ export default function BinauralBeatsApp() {
 
       {/* CENTRADO ABSOLUTO (Eje Macro) */}
       <AnimatePresence mode="wait">
-        {!isPlaying ? (
+        {!hasStarted ? (
           <motion.div
             key="intro"
             initial={{ opacity: 0 }}
@@ -388,7 +539,7 @@ export default function BinauralBeatsApp() {
             className="fixed inset-0 flex flex-col items-center justify-center z-50 p-4 bg-zinc-950/20 backdrop-blur-sm pointer-events-auto"
           >
             <BorderGlow
-              className="p-12 md:p-20 pb-16 md:pb-24"
+              className="p-12 md:p-16 pb-14 md:pb-20"
               borderRadius={42}
               glowColor={`${baseHue} 80 60`}
               backgroundColor="rgba(9, 9, 11, 0.8)"
@@ -400,11 +551,11 @@ export default function BinauralBeatsApp() {
                 initial={{ y: 20, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 transition={{ delay: 0.2, duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
-                className="flex flex-col items-center gap-12"
+                className="flex flex-col items-center gap-12 md:gap-16"
               >
                 <div className="text-center space-y-4">
                   <motion.h1 
-                    className="text-4xl md:text-6xl font-bold font-mono uppercase tracking-[0.3em] text-white/90"
+                    className="text-4xl md:text-5xl font-bold font-mono uppercase tracking-[0.3em] text-white/90 whitespace-nowrap"
                     animate={{ 
                       textShadow: [
                         "0 0 20px rgba(255,255,255,0)",
@@ -416,7 +567,7 @@ export default function BinauralBeatsApp() {
                   >
                     Neuro-Sync
                   </motion.h1>
-                  <p className="text-sm md:text-base font-light font-mono uppercase tracking-[0.6em] text-white/30">
+                  <p className="text-xs font-light font-mono uppercase tracking-[0.6em] text-white/30 whitespace-nowrap">
                     Engine Hemi Sync
                   </p>
                 </div>
@@ -441,28 +592,28 @@ export default function BinauralBeatsApp() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 1.2, duration: 1 }}
-              className="mt-14 flex flex-col items-center gap-4 pointer-events-none"
+              className="mt-12 flex flex-col items-center gap-3 pointer-events-none"
             >
-              <div className="flex items-center gap-5">
-                <span className="text-[11px] font-mono font-light tracking-[0.4em] uppercase text-white/20">
+              <div className="flex items-center gap-4">
+                <span className="text-[10px] font-mono font-light tracking-[0.4em] uppercase text-white/20">
                   Developed by
                 </span>
-                <span className="text-[11px] font-mono font-medium tracking-[0.4em] uppercase text-white/60">
+                <span className="text-[10px] font-mono font-medium tracking-[0.4em] uppercase text-white/60">
                   Daniel Dobles
                 </span>
               </div>
-              <div className="w-20 h-px bg-white/10" />
-              <span className="text-[10px] font-mono font-light tracking-[0.5em] uppercase text-white/15">
-                Sound Engineering
+              <div className="w-16 h-px bg-white/10" />
+              <span className="text-[9px] font-mono font-light tracking-[0.5em] uppercase text-white/15">
+                DSP Sound Engineering
               </span>
             </motion.div>
           </motion.div>
         ) : (          <div key="controls-container" className="fixed inset-0 flex items-center justify-center z-10 p-4 pointer-events-none">
             <motion.div
               key="controls"
-              initial={{ opacity: 0, y: 40, scale: 1.4 }}
-              animate={{ opacity: 1, y: 0, scale: 1.5 }}
-              exit={{ opacity: 0, scale: 1.6, filter: 'blur(20px)' }}
+              initial={{ opacity: 0, y: 40, scale: 1.2 }}
+              animate={{ opacity: 1, y: 0, scale: 1.3 }}
+              exit={{ opacity: 0, scale: 1.4, filter: 'blur(20px)' }}
               transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
               className="pointer-events-auto w-full max-w-[550px] bg-zinc-950/80 backdrop-blur-2xl border border-white/10 rounded-[42px] p-6 flex flex-col gap-4 relative shadow-[0_48px_100px_rgba(0,0,0,0.8)] origin-center"
             >
@@ -517,6 +668,32 @@ export default function BinauralBeatsApp() {
                 className="w-full h-px bg-fixed transition-opacity duration-1000"
               />
 
+              {/* Wave Generator Mode Selector */}
+              <div className="flex bg-white/[0.02] border border-white/5 p-1 rounded-2xl">
+                <button
+                  onClick={() => changeAudioMode('binaural')}
+                  className={cn(
+                    "flex-1 py-1.5 text-[9px] font-mono uppercase tracking-wider rounded-xl transition-all duration-300",
+                    audioMode === 'binaural'
+                      ? "bg-white/10 text-white font-medium shadow-sm"
+                      : "text-white/30 hover:text-white/60"
+                  )}
+                >
+                  Binaural Beats
+                </button>
+                <button
+                  onClick={() => changeAudioMode('isochronic')}
+                  className={cn(
+                    "flex-1 py-1.5 text-[9px] font-mono uppercase tracking-wider rounded-xl transition-all duration-300",
+                    audioMode === 'isochronic'
+                      ? "bg-white/10 text-white font-medium shadow-sm"
+                      : "text-white/30 hover:text-white/60"
+                  )}
+                >
+                  Isochronic Tones
+                </button>
+              </div>
+
               {/* Solfeggio Carriers Grid - Phi Hierarchy 1 */}
               <div className="space-y-3 transition-opacity duration-1000">
                 <div className="flex justify-center text-white/20">
@@ -558,7 +735,7 @@ export default function BinauralBeatsApp() {
                     )}
                   >
                     <div className={cn("transition-transform duration-700", activePreset === p.id ? "scale-110" : "scale-90 opacity-40")}>
-                      {React.cloneElement(p.icon as React.ReactElement, { className: "w-3.5 h-3.5" })}
+                      {React.cloneElement(p.icon as React.ReactElement<any>, { className: "w-3.5 h-3.5" })}
                     </div>
                     <span className="text-[7px] font-mono font-bold mt-1.5 uppercase tracking-widest">{p.name}</span>        
                   </button>
@@ -591,16 +768,41 @@ export default function BinauralBeatsApp() {
 
                 {/* Right Telemetry: Scaled by 1/1.618 approx */}
                 <div className="flex-1 bg-white/[0.02] py-4 rounded-[24px] border border-white/5 flex flex-col items-center gap-1 transition-opacity duration-1000">
-                  <span className="text-[7px] text-white/20 uppercase font-bold tracking-[0.2em]">Binaural</span>  
+                  <span className="text-[7px] text-white/20 uppercase font-bold tracking-[0.2em]">{audioMode === 'binaural' ? 'Binaural' : 'Isochronic'}</span>  
                   <div className="text-lg font-mono font-medium text-white/80 tabular-nums">
                     <span ref={pulseTextRef}>{currentPreset.beatFreq.toFixed(2)}</span>
                     <span className="text-[9px] ml-0.5 opacity-20">Hz</span>
                   </div>
                 </div>
               </div>
-              {/* Future Function Space (Reserved) */}
-              <div className="pt-4 border-t border-white/5 flex flex-col items-center min-h-[60px]">
-                {/* Reserved for future functionality */}
+              
+              {/* Dynamic Footer: Contextual controls based on selected engine mode */}
+              <div className="border-t border-white/5 pt-4 min-h-[60px] flex flex-col items-center justify-center text-center">
+                {audioMode === 'isochronic' ? (
+                  <div className="w-full flex items-center justify-between px-2 gap-4">
+                    <span className="text-[9px] font-mono text-white/40 uppercase tracking-widest shrink-0">Duty Cycle</span>
+                    <div className="relative flex-1 h-1 flex items-center">
+                      <div className="absolute inset-0 bg-white/10 rounded-full" />
+                      <motion.div 
+                        className="absolute inset-y-0 left-0 rounded-full bg-white/30"
+                        animate={{ width: `${((dutyCycle - 0.05) / 0.90) * 100}%` }}
+                      />
+                      <input 
+                        type="range" min="0.10" max="0.90" step="0.05" value={dutyCycle} 
+                        onChange={(e) => changeDutyCycle(parseFloat(e.target.value))}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                      />
+                      <motion.div 
+                        className="absolute w-2.5 h-2.5 bg-white/80 rounded-full"
+                        animate={{ left: `calc(${((dutyCycle - 0.05) / 0.90) * 100}% - 5px)` }}
+                        transition={{ type: "spring", stiffness: 400, damping: 40 }}
+                      />
+                    </div>
+                    <span className="text-[9px] font-mono text-white/60 w-10 text-right tabular-nums">{Math.round(dutyCycle * 100)}%</span>
+                  </div>
+                ) : (
+                  <span className="text-[9px] font-mono text-white/10 uppercase tracking-[0.4em]">Fletcher-Munson Compensated</span>
+                )}
               </div>
             </motion.div>
           </div>
