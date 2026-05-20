@@ -416,7 +416,7 @@ export default function BinauralBeatsApp() {
       setIsPlaying(true);
       if (!hasStarted) setHasStarted(true);
     }
-  }, [isPlaying, initAudio, carrierFreq, pulseFreq, pulseType, isIsoEnabled, isoIntensity, volume, fletcherGain]);
+  }, [isPlaying, initAudio, carrierFreq, pulseFreq, pulseType, isIsoEnabled, isoIntensity, volume, fletcherGain, hasStarted]);
 
   const changePreset = (preset: WavePreset) => {
     setActivePreset(preset.id);

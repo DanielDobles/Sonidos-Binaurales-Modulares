@@ -103,26 +103,55 @@ export class IsochronicModule {
     let baseRate = 1.0;
     
     if (freq >= 30) {
-      // Gamma: Negative pitch slope
-      // 30Hz -> 0.8, 50Hz -> 0.5
       baseRate = 0.8 - ((freq - 30) / 20) * 0.3;
     } else if (freq <= 4) {
-      // Delta: Positive/Neutral pitch
-      // 0.5Hz -> 1.5, 4Hz -> 1.0
       baseRate = 1.5 - ((freq - 0.5) / 3.5) * 0.5;
     } else {
-      // Linear interpolation for Alpha/Theta/Beta
-      // 4Hz -> 1.0, 30Hz -> 0.8
       baseRate = 1.0 - ((freq - 4) / 26) * 0.2;
     }
 
     return Math.max(0.2, Math.min(baseRate + this._pitchOffset, 4.0));
   }
 
+  /**
+   * Core DSP Logic: Applies a pulse envelope over a signal.
+   */
+  private regenerateCurve() {
+    const curveLength = 4096;
+    const curve = new Float32Array(curveLength);
+    const type = this._pulseType;
+    const d = this._dutyCycle;
+
+    for (let i = 0; i < curveLength; i++) {
+      const x = (i / (curveLength - 1)) * 2.0 - 1.0;
+      
+      if (type === 'sine') {
+        const phase = (x + 1) / 2; // [0, 1]
+        curve[i] = Math.max(0, Math.sin(phase * Math.PI * 2 * (1/d) - Math.PI/2) * 0.5 + 0.5);
+        if (phase > d) curve[i] = 0;
+      } else {
+        const theta = 1.0 - 2.0 * d;
+        const epsilon = 0.05;
+        const low = theta - epsilon;
+        const high = theta + epsilon;
+
+        if (x < low) curve[i] = 0;
+        else if (x > high) curve[i] = 1;
+        else {
+          const t = (x - low) / (high - low);
+          curve[i] = t * t * (3.0 - 2.0 * t);
+        }
+      }
+    }
+    this.shaperNode.curve = curve;
+  }
+
   public async start(startTime: number, resonanceCarrier: number, pulseFreq: number) {
     if (this.isRunning) this.stop();
     await this.isBufferLoaded;
     if (!this.buffer) return;
+
+    console.log("IsochronicModule: Starting playback...", { resonanceCarrier, pulseFreq });
 
     this._resonanceCarrier = resonanceCarrier;
     this._pulseFreq = pulseFreq;
@@ -149,6 +178,31 @@ export class IsochronicModule {
     this.isRunning = true;
   }
 
+  public stop(time: number = this.ctx.currentTime) {
+    if (!this.isRunning) return;
+    try {
+      this.sourceNode?.stop(time);
+    } catch (e) { /* ignore already stopped */ }
+    this.lfoOsc?.stop(time);
+    this.sourceNode = null;
+    this.lfoOsc = null;
+    this.isRunning = false;
+  }
+
+  public connect(destination: AudioNode) {
+    this.outputGainNode.connect(destination);
+  }
+
+  public setIntensity(val: number, time: number = this.ctx.currentTime) {
+    this._intensity = val;
+    this.outputGainNode.gain.setTargetAtTime(val, time, 0.05);
+  }
+
+  public setPulseType(type: PulseType) {
+    this._pulseType = type;
+    this.regenerateCurve();
+  }
+
   public setDrive(val: number) {
     this._drive = val;
     this.updateDriveCurve();
@@ -160,6 +214,11 @@ export class IsochronicModule {
       const rate = this.calculatePlaybackRate(this._pulseFreq);
       this.sourceNode.playbackRate.linearRampToValueAtTime(rate, time + 0.1);
     }
+  }
+
+  public setCarrierFreq(freq: number, time: number = this.ctx.currentTime) {
+    this._resonanceCarrier = freq;
+    this.filterNode.frequency.setTargetAtTime(freq, time, 0.05);
   }
 
   public setPulseFreq(freq: number, time: number = this.ctx.currentTime) {
@@ -174,4 +233,3 @@ export class IsochronicModule {
     this.regenerateCurve();
   }
 }
-
