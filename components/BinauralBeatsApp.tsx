@@ -12,7 +12,7 @@ function cn(...inputs: ClassValue[]) { return twMerge(clsx(inputs)); }
 
 interface WavePreset { id: string; name: string; range: string; beatFreq: number; carrierFreq: number; icon: React.ReactNode; }
 
-// --- 3D AURORA SPATIAL ENGINE ---
+// --- TRUE GLSL WAVE DISTORTION SHADER ---
 function AuroraWaveform({ 
   isPlaying, 
   analyserRef, 
@@ -30,47 +30,53 @@ function AuroraWaveform({
 }) {
   const meshRef = useRef<THREE.Mesh>(null!);
   const materialRef = useRef<THREE.ShaderMaterial>(null!);
-  const dataArray = useMemo(() => new Uint8Array(2048), []);
+  
+  // We use a DataTexture to pass the audio array directly to the GPU
+  const dataArray = useMemo(() => new Uint8Array(256), []);
+  const audioTexture = useMemo(() => {
+    const tex = new THREE.DataTexture(dataArray, 256, 1, THREE.RedFormat);
+    tex.needsUpdate = true;
+    return tex;
+  }, [dataArray]);
 
   const uniforms = useMemo(() => ({
     uTime: { value: 0 },
     uColor: { value: new THREE.Color() },
-    uAmplitude: { value: 0 },
-  }), []);
+    uAudioBuffer: { value: audioTexture },
+    uFrequency: { value: binauralBeatFreq },
+    uIsPlaying: { value: 0.0 }
+  }), [audioTexture, binauralBeatFreq]);
 
   useFrame((state) => {
     const { clock } = state;
     const time = clock.getElapsedTime();
     
-    // 1. Update Shader Uniforms
     if (materialRef.current) {
       materialRef.current.uniforms.uTime.value = time;
       materialRef.current.uniforms.uColor.value.setHSL(baseHue / 360, 0.8, 0.5);
+      materialRef.current.uniforms.uFrequency.value = binauralBeatFreq;
+      materialRef.current.uniforms.uIsPlaying.value = isPlaying ? 1.0 : 0.0;
 
-      let amplitude = 0;
       if (isPlaying && analyserRef.current) {
+        // Read raw audio data
         analyserRef.current.getByteTimeDomainData(dataArray);
-        let sum = 0;
-        for (let i = 0; i < 128; i++) { // Sample subset for performance
-          sum += Math.abs(dataArray[i] - 128);
-        }
-        amplitude = sum / 128 / 128.0;
-      } else {
-        amplitude = Math.sin(time * 1.5) * 0.05 + 0.05;
+        // Tell GPU the texture data has changed
+        materialRef.current.uniforms.uAudioBuffer.value.needsUpdate = true;
       }
-      materialRef.current.uniforms.uAmplitude.value = amplitude;
     }
 
-    // 2. High-Frequency Pulse Telemetry (60 FPS DOM Injection)
+    // High-Frequency Pulse Telemetry (60 FPS DOM Injection)
     if (isPlaying && pulseTextRef.current) {
       const elapsed = (Date.now() - startTimeRef.current) / 1000;
-      const currentPulse = binauralBeatFreq + (Math.sin(elapsed * Math.PI * 2 * 0.04) * 0.3);
+      const lfoModulation = Math.sin(elapsed * Math.PI * 2 * 0.04) * 0.3;
+      const currentPulse = binauralBeatFreq + lfoModulation;
       pulseTextRef.current.textContent = currentPulse.toFixed(1) + " Hz";
     }
 
-    // 3. Subtle Scene Dynamics
+    // Subtle gentle breath of the whole mesh
     if (meshRef.current) {
-      meshRef.current.rotation.z = Math.sin(time * 0.1) * 0.05;
+      meshRef.current.rotation.z = Math.sin(time * 0.1) * 0.02;
+      meshRef.current.rotation.x = -Math.PI / 8 + Math.sin(time * 0.05) * 0.05;
     }
   });
 
@@ -78,18 +84,56 @@ function AuroraWaveform({
     vertexShader: `
       varying vec2 vUv;
       uniform float uTime;
-      uniform float uAmplitude;
+      uniform float uFrequency;
+      uniform float uIsPlaying;
+      uniform sampler2D uAudioBuffer;
+      
+      // Simplex noise function for organic gaseous distortion
+      vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+      vec2 mod289(vec2 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+      vec3 permute(vec3 x) { return mod289(((x*34.0)+1.0)*x); }
+      float snoise(vec2 v) {
+        const vec4 C = vec4(0.211324865405187, 0.366025403784439, -0.577350269189626, 0.024390243902439);
+        vec2 i  = floor(v + dot(v, C.yy) );
+        vec2 x0 = v -   i + dot(i, C.xx);
+        vec2 i1; i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+        vec4 x12 = x0.xyxy + C.xxzz;
+        x12.xy -= i1;
+        i = mod289(i);
+        vec3 p = permute( permute( i.y + vec3(0.0, i1.y, 1.0 )) + i.x + vec3(0.0, i1.x, 1.0 ));
+        vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0);
+        m = m*m ; m = m*m ;
+        vec3 x = 2.0 * fract(p * C.www) - 1.0;
+        vec3 h = abs(x) - 0.5;
+        vec3 ox = floor(x + 0.5);
+        vec3 a0 = x - ox;
+        m *= 1.79284291400159 - 0.85373472095314 * ( a0*a0 + h*h );
+        vec3 g;
+        g.x  = a0.x  * x0.x  + h.x  * x0.y;
+        g.yz = a0.yz * x12.xz + h.yz * x12.yw;
+        return 130.0 * dot(m, g);
+      }
       
       void main() {
         vUv = uv;
         vec3 pos = position;
         
-        // Soft Aurora Fluid Dynamics
-        float noise = sin(pos.x * 1.2 + uTime * 0.8) * cos(pos.y * 1.5 + uTime * 1.2);
-        float wave = sin(pos.x * 2.0 + uTime * 2.0) * 0.6;
-        wave += cos(pos.y * 1.8 + uTime * 1.4) * 0.4;
+        // Read raw audio displacement from the DataTexture
+        // r channel holds the 0-255 byte value. Subtract 0.5 (128/255) to center at 0.
+        float audioData = texture2D(uAudioBuffer, vec2(vUv.x, 0.5)).r - 0.5;
         
-        pos.z += (wave + noise) * (uAmplitude * 6.0 + 0.4);
+        // Physical binding: Distort Y and Z based on real audio data
+        float rawDisplacement = audioData * 8.0 * uIsPlaying;
+        
+        // Add organic Simplex noise to mimic Soft Aurora gaseousness
+        float noise = snoise(vec2(pos.x * 0.5 + uTime * 0.2, pos.y * 0.5 - uTime * 0.3)) * 0.5;
+        
+        // Add a mathematical pulse representing the Binaural Beat frequency
+        float beatPulse = sin(pos.x * 2.0 + uTime * uFrequency * 0.2) * 0.4;
+        
+        // Blend raw audio with gaseous noise and the beat pulse
+        pos.z += rawDisplacement + noise + beatPulse;
+        pos.y += (rawDisplacement * 0.5) + noise * 0.5;
         
         gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
       }
@@ -98,25 +142,30 @@ function AuroraWaveform({
       varying vec2 vUv;
       uniform vec3 uColor;
       uniform float uTime;
-      uniform float uAmplitude;
+      uniform float uIsPlaying;
 
       void main() {
-        // Soft Aurora Edge Masking
-        float edgeSoftness = smoothstep(0.0, 0.4, vUv.y) * smoothstep(1.0, 0.6, vUv.y);
-        edgeSoftness *= smoothstep(0.0, 0.1, vUv.x) * smoothstep(1.0, 0.9, vUv.x);
+        // High-end Soft Aurora fading: intense center, fully transparent edges
+        float edgeY = smoothstep(0.0, 0.4, vUv.y) * smoothstep(1.0, 0.6, vUv.y);
+        float edgeX = smoothstep(0.0, 0.2, vUv.x) * smoothstep(1.0, 0.8, vUv.x);
+        float alphaMask = edgeY * edgeX;
         
-        // Gaseous Texture Synthesis
-        float glow = sin(vUv.x * 15.0 + uTime) * 0.5 + 0.5;
-        vec3 finalColor = mix(uColor, vec3(1.0), glow * 0.2);
+        // Add moving plasma glow across the X axis
+        float glow = sin(vUv.x * 10.0 + uTime * 1.5) * 0.5 + 0.5;
+        vec3 finalColor = mix(uColor, vec3(1.0, 1.0, 1.0), glow * 0.3);
         
-        gl_FragColor = vec4(finalColor, edgeSoftness * (uAmplitude * 1.5 + 0.3));
+        // Base opacity drops when not playing
+        float baseOpacity = mix(0.1, 0.6, uIsPlaying);
+        
+        gl_FragColor = vec4(finalColor, alphaMask * baseOpacity * (glow + 0.5));
       }
     `
   }), []);
 
   return (
-    <mesh ref={meshRef} position={[0, 0, 0]} rotation={[-Math.PI / 10, 0, 0]}>
-      <planeGeometry args={[12, 4, 128, 128]} />
+    <mesh ref={meshRef} position={[0, 0, 0]} rotation={[-Math.PI / 8, 0, 0]}>
+      {/* Dense subdivision for high-fidelity vertex distortion */}
+      <planeGeometry args={[14, 4, 256, 32]} />
       <shaderMaterial
         ref={materialRef}
         args={[shaderArgs]}
@@ -199,9 +248,9 @@ export default function BinauralBeatsApp() {
       lfo.frequency.value = 0.04; // 25s hardware-accelerated cycle
       lfoGain.gain.value = 0.3;    // ±0.3Hz micro-modulation
       
-      aL.fftSize = 2048; pL.pan.value = -1; pR.pan.value = 1;
+      aL.fftSize = 256; pL.pan.value = -1; pR.pan.value = 1;
       
-      // Set initial frequencies immediately to avoid default 440Hz jump
+      // Fix 440Hz jump
       oL.frequency.setValueAtTime(carrierFreq, ctx.currentTime);
       oR.frequency.setValueAtTime(carrierFreq + binauralBeatFreq, ctx.currentTime);
       
@@ -231,10 +280,8 @@ export default function BinauralBeatsApp() {
     <div className="fixed inset-0 flex items-center justify-center p-4 bg-[#050505] font-sans text-white overflow-hidden">
       {/* Background Chromatic Depth */}
       <div 
-        className="absolute inset-0 opacity-20 transition-all duration-1000"
-        style={{
-          background: `radial-gradient(circle at 50% 50%, hsla(${baseHue}, 70%, 50%, 0.15), transparent 70%)`
-        }}
+        className="absolute inset-0 opacity-20 transition-all duration-1000 pointer-events-none"
+        style={{ background: `radial-gradient(circle at 50% 50%, hsla(${baseHue}, 70%, 50%, 0.15), transparent 70%)` }}
       />
       
       {/* --- REACT THREE FIBER INTERACTIVE CANVAS --- */}
