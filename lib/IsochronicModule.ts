@@ -3,6 +3,8 @@
  * 
  * Provides high-precision Isochronic Tone synthesis using a sample-based source
  * with dynamic resonance, adjustable duty cycle, and advanced envelope smoothing.
+ * 
+ * Optimized for rhythmic phase stability and harmonic density across all brainwave ranges.
  */
 
 export type PulseType = 'sine' | 'square';
@@ -15,6 +17,7 @@ export class IsochronicModule {
   private shaperNode: WaveShaperNode;
   private driveNode: WaveShaperNode;
   private filterNode: BiquadFilterNode;
+  private lowShelfNode: BiquadFilterNode;
   private qGainNode: GainNode;
   private modGainNode: GainNode;
   private outputGainNode: GainNode;
@@ -28,24 +31,32 @@ export class IsochronicModule {
   private _intensity: number = 0.5;
   private _drive: number = 0.5;
   private _pitchOffset: number = 0.0;
+  private _attackTime: number = 0.02; // Fixed 20ms attack for "thump" consistency
 
   constructor(ctx: AudioContext) {
     this.ctx = ctx;
     this.shaperNode = this.ctx.createWaveShaper();
     this.driveNode = this.ctx.createWaveShaper();
     this.filterNode = this.ctx.createBiquadFilter();
+    this.lowShelfNode = this.ctx.createBiquadFilter();
     this.qGainNode = this.ctx.createGain();
     this.modGainNode = this.ctx.createGain();
     this.outputGainNode = this.ctx.createGain();
 
-    // Configure Filter
+    // Configure Resonance Filter
     this.filterNode.type = 'peaking';
     this.filterNode.frequency.value = this._resonanceCarrier;
     this.filterNode.Q.value = 1.0;
     this.filterNode.gain.value = 12.0;
 
-    // Signal Path: Source -> Filter -> Drive -> ModGain (Gate) -> Output
-    this.filterNode.connect(this.driveNode);
+    // Configure Low-Shelf (Density compensation)
+    this.lowShelfNode.type = 'lowshelf';
+    this.lowShelfNode.frequency.value = 80; // Target 40-100Hz range
+    this.lowShelfNode.gain.value = 0;
+
+    // Signal Path: Source -> Filter -> LowShelf -> Drive -> ModGain (Gate) -> Output
+    this.filterNode.connect(this.lowShelfNode);
+    this.lowShelfNode.connect(this.driveNode);
     this.driveNode.connect(this.modGainNode);
     this.modGainNode.connect(this.outputGainNode);
 
@@ -62,7 +73,6 @@ export class IsochronicModule {
     this.updateDriveCurve();
     
     // Auto-load sample
-    console.log("IsochronicModule: Initiating sample load...");
     this.isBufferLoaded = this.loadSample('/IsochronicModule.wav');
   }
 
@@ -70,7 +80,7 @@ export class IsochronicModule {
    * Generates a soft-clipping saturation curve based on _drive
    */
   private updateDriveCurve() {
-    const k = this._drive * 20; // Scale drive
+    const k = this._drive * 20; 
     const n_samples = 44100;
     const curve = new Float32Array(n_samples);
     const deg = Math.PI / 180;
@@ -88,59 +98,81 @@ export class IsochronicModule {
       const arrayBuffer = await response.arrayBuffer();
       if (arrayBuffer.byteLength === 0) throw new Error("Audio buffer is empty.");
       this.buffer = await this.ctx.decodeAudioData(arrayBuffer);
-      console.log("IsochronicModule: Sample loaded.", this.buffer.duration);
     } catch (e) {
       console.error("IsochronicModule Error:", e);
     }
   }
 
   /**
-   * Maps pulse frequency to a dynamic playbackRate (Pitch)
-   * Gamma (30-50Hz) -> Lower pitch
-   * Delta (0.5-4Hz) -> Higher pitch
+   * Phase-Locked Resampling:
+   * Maps pulse frequency to a dynamic playbackRate.
+   * Ensures 1 cycle of sample aligns with 1 cycle of pulse for rhythmic stability.
    */
   private calculatePlaybackRate(freq: number): number {
-    let baseRate = 1.0;
+    if (!this.buffer) return 1.0;
+
+    // Sync: playbackRate * (1/freq) = buffer.duration 
+    // => playbackRate = buffer.duration * freq
+    const syncRate = this.buffer.duration * freq;
     
+    // Timbre Modulation to maintain contrast across ranges
+    let timbreMod = 1.0;
     if (freq >= 30) {
-      baseRate = 0.8 - ((freq - 30) / 20) * 0.3;
+      timbreMod = 0.7; // Darker/Denser Gamma
     } else if (freq <= 4) {
-      baseRate = 1.5 - ((freq - 0.5) / 3.5) * 0.5;
-    } else {
-      baseRate = 1.0 - ((freq - 4) / 26) * 0.2;
+      timbreMod = 1.3; // Clearer/Bigger Delta
     }
 
-    return Math.max(0.2, Math.min(baseRate + this._pitchOffset, 4.0));
+    return Math.max(0.1, Math.min(syncRate * timbreMod + this._pitchOffset, 8.0));
+  }
+
+  /**
+   * Dynamic Low-End Compensation:
+   * Increases Low-Shelf gain as frequency decreases.
+   */
+  private updateDensity(freq: number, time: number = this.ctx.currentTime) {
+    // Boost gain up to 15dB for Delta waves to maintain "blackness"
+    const maxBoost = 15;
+    const boost = freq < 10 ? (1.0 - (freq / 10)) * maxBoost : 0;
+    this.lowShelfNode.gain.setTargetAtTime(boost, time, 0.1);
   }
 
   /**
    * Core DSP Logic: Applies a pulse envelope over a signal.
+   * Implements fixed-time attack (transient definition) for consistency.
    */
   private regenerateCurve() {
     const curveLength = 4096;
     const curve = new Float32Array(curveLength);
     const type = this._pulseType;
     const d = this._dutyCycle;
+    
+    // Calculate attack as percentage of cycle based on fixed 20ms attackTime
+    const pulsePeriod = 1 / this._pulseFreq;
+    const attackPct = Math.min(this._attackTime / pulsePeriod, d * 0.5);
 
     for (let i = 0; i < curveLength; i++) {
-      const x = (i / (curveLength - 1)) * 2.0 - 1.0;
+      const x = (i / (curveLength - 1)) * 2.0 - 1.0; // [-1, 1]
+      const phase = (x + 1) / 2; // [0, 1]
       
-      if (type === 'sine') {
-        const phase = (x + 1) / 2; // [0, 1]
-        curve[i] = Math.max(0, Math.sin(phase * Math.PI * 2 * (1/d) - Math.PI/2) * 0.5 + 0.5);
-        if (phase > d) curve[i] = 0;
-      } else {
-        const theta = 1.0 - 2.0 * d;
-        const epsilon = 0.05;
-        const low = theta - epsilon;
-        const high = theta + epsilon;
+      if (phase > d) {
+        curve[i] = 0;
+        continue;
+      }
 
-        if (x < low) curve[i] = 0;
-        else if (x > high) curve[i] = 1;
-        else {
-          const t = (x - low) / (high - low);
-          curve[i] = t * t * (3.0 - 2.0 * t);
-        }
+      // Smoothstep Attack/Release with fixed attack time for sharp transients
+      if (phase < attackPct) {
+        const t = phase / attackPct;
+        curve[i] = t * t * (3.0 - 2.0 * t);
+      } else if (phase > d - attackPct) {
+        const t = (d - phase) / attackPct;
+        curve[i] = t * t * (3.0 - 2.0 * t);
+      } else {
+        curve[i] = 1.0;
+      }
+
+      if (type === 'sine') {
+        curve[i] *= Math.sin(phase * Math.PI / d);
       }
     }
     this.shaperNode.curve = curve;
@@ -151,7 +183,7 @@ export class IsochronicModule {
     await this.isBufferLoaded;
     if (!this.buffer) return;
 
-    console.log("IsochronicModule: Starting playback...", { resonanceCarrier, pulseFreq });
+    console.log("IsochronicModule: Starting phase-locked playback...", { resonanceCarrier, pulseFreq });
 
     this._resonanceCarrier = resonanceCarrier;
     this._pulseFreq = pulseFreq;
@@ -168,6 +200,7 @@ export class IsochronicModule {
     this.lfoOsc.frequency.setValueAtTime(this._pulseFreq, startTime);
 
     this.filterNode.frequency.setValueAtTime(this._resonanceCarrier, startTime);
+    this.updateDensity(this._pulseFreq, startTime);
 
     this.sourceNode.connect(this.filterNode);
     this.lfoOsc.connect(this.shaperNode);
@@ -180,9 +213,7 @@ export class IsochronicModule {
 
   public stop(time: number = this.ctx.currentTime) {
     if (!this.isRunning) return;
-    try {
-      this.sourceNode?.stop(time);
-    } catch (e) { /* ignore already stopped */ }
+    try { this.sourceNode?.stop(time); } catch (e) {}
     this.lfoOsc?.stop(time);
     this.sourceNode = null;
     this.lfoOsc = null;
@@ -230,6 +261,7 @@ export class IsochronicModule {
       this.sourceNode.playbackRate.linearRampToValueAtTime(rate, time + 0.2);
     }
     
+    this.updateDensity(freq, time);
     this.regenerateCurve();
   }
 }
