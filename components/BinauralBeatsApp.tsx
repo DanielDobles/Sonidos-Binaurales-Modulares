@@ -338,9 +338,8 @@ export default function BinauralBeatsApp() {
         <div className="flex justify-between items-end px-2">
           <div className="space-y-0.5">
             <h2 className="text-[10px] font-bold uppercase tracking-[0.3em] text-white/30">Neuro-Sync Engine <span className="text-[8px] opacity-50 ml-1">v1.0.0</span></h2>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center">
               <div className={cn("w-1.5 h-1.5 rounded-full", isPlaying ? "animate-pulse" : "opacity-30")} style={{ backgroundColor: `hsl(${baseHue}, 80%, 60%)` }} />
-              <span className="text-xs font-medium text-white/60 tracking-widest uppercase">STOCHASTIC DSP V2</span>
             </div>
           </div>
           <div className="flex items-center gap-4 bg-white/5 px-4 py-2 rounded-2xl border border-white/5">
