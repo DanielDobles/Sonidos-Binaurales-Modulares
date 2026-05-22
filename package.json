@@ -6,9 +6,9 @@
   "build": {
     "appId": "com.sonidos-binaurales.app",
     "productName": "Sonidos Binaurales",
-    "asar": false,
+    "asar": true,
     "files": [
-      ".next/standalone/**/*",
+      "out/**/*",
       "electron-main.js",
       "package.json"
     ],
@@ -21,7 +21,7 @@
   },
   "scripts": {
     "dev": "next dev",
-    "build": "next build && node copy-assets.js",
+    "build": "next build",
     "start": "next start",
     "lint": "eslint .",
     "clean": "next clean",
