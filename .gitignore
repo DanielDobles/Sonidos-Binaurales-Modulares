@@ -5,7 +5,6 @@ coverage/
 *.log
 .env*
 !.env.example
-.antigravity/
 .vscode/
 
 # Electron and static build outputs
