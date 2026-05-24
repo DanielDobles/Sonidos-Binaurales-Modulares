@@ -11,7 +11,7 @@ Desarrollado como una aplicación web moderna de Next.js y empaquetado para escr
 
 Aquí puede apreciarse la aplicación en funcionamiento, mostrando el visualizador espectral Aurora 3D acoplado al motor de síntesis, los controles interactivos de audio y el HUD de iluminación dinámica:
 
-![Demostración de Neuro-Sync Engine](./binauralbeat.mp4)
+![Demostración de Neuro-Sync Engine](./bi
 
 ---
 
